@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+  /* Defensive: some decorative absolutely-positioned elements (hero blurs,
+     floating shapes) intentionally sit partly outside their container for
+     effect — this stops any of them from ever introducing a horizontal
+     scrollbar on narrow (mobile/tablet) viewports. */
+  overflow-x: hidden;
+  width: 100%;
+}
+
+body {
+  @apply bg-white text-navy-900 font-sans antialiased;
+  overflow-x: hidden;
+  width: 100%;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #eef2fb;
+}
+::-webkit-scrollbar-thumb {
+  background: #284591;
+  border-radius: 999px;
+}
+
+@layer components {
+  .container-page {
+    @apply max-w-7xl mx-auto px-5 sm:px-8 lg:px-12;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-semibold text-sm transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-primary {
+    @apply btn bg-orange-500 text-white shadow-lg shadow-orange-500/25 hover:bg-orange-600 hover:shadow-orange-500/40;
+  }
+  .btn-secondary {
+    @apply btn bg-navy-700 text-white hover:bg-navy-800;
+  }
+  .btn-outline {
+    @apply btn border-2 border-navy-700 text-navy-700 hover:bg-navy-700 hover:text-white;
+  }
+  .btn-ghost {
+    @apply btn bg-white/10 text-white border border-white/30 hover:bg-white/20 backdrop-blur;
+  }
+  .card {
+    @apply bg-white rounded-2xl shadow-card border border-navy-100 transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1;
+  }
+  .section-label {
+    @apply inline-block text-orange-600 font-bold tracking-wider text-xs uppercase bg-orange-50 px-3 py-1 rounded-full;
+  }
+  .input-field {
+    @apply w-full rounded-xl border border-navy-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition;
+  }
+  .label {
+    @apply block text-sm font-semibold text-navy-800 mb-1.5;
+  }
+}

@@ -1,0 +1,75 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: askit-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: askit_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - askit_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: askit-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      FRONTEND_URL: http://localhost:5173
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/askit_db?schema=public
+      JWT_ACCESS_SECRET: 9a4019fd1f19a32664075bd18dc0b278f51d0cc200e5869b34eaa9f21e3365264e80d0a7b112b9bf1dd50772cf3b6964
+      JWT_REFRESH_SECRET: ec7e82946f9486d414536e9ae3fea8f39e00e3dcc6aab1415c1ae509fadbf03efc4744327493483f0424fc4405c05882
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      SUPER_ADMIN_NAME: AskItSuperAdmin
+      SUPER_ADMIN_EMAIL: rajendranallapareddy9515@gmail.com
+      SUPER_ADMIN_PASSWORD: Rajendra@9515
+      SUPER_ADMIN_MOBILE: '9515154709'
+      # Payment configuration - using MANUAL mode for development
+      PAYMENT_GATEWAY: RAZORPAY
+      # Real Razorpay TEST-mode keys are already set below, so online
+      # checkout works out of the box in this dev/demo environment. Replace
+      # with your own keys (or your LIVE keys) before going to production —
+      # or switch this back to MANUAL / flip "Active Payment Gateway" to
+      # Manual in Admin → Payment Settings to run offline-only.
+      RAZORPAY_KEY_ID: rzp_test_TJgXrwgA1C15V3
+      RAZORPAY_KEY_SECRET: tu5kem2k522rvDTdTo3Y20zD
+      RAZORPAY_WEBHOOK_SECRET: your_razorpay_webhook_secret
+      ENCRYPTION_KEY: Ys0z0p8XlyEuD+YYpbl+tb+Phsp5vs/nDKEhGN8wIas=
+    ports:
+      - '5000:5000'
+    volumes:
+      - askit_uploads:/app/uploads
+
+  frontend:
+    build: ./frontend
+    container_name: askit-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      # Informational only — the frontend doesn't actually read this; the
+      # gateway that's really used is the backend's PAYMENT_GATEWAY env var
+      # (default) plus Admin → Payment Settings → Active Gateway (overrides
+      # it at runtime). Kept here so it's obvious where to look.
+      VITE_PAYMENT_GATEWAY: RAZORPAY
+    ports:
+      - '5173:5173'
+
+volumes:
+  askit_pgdata:
+  askit_uploads:

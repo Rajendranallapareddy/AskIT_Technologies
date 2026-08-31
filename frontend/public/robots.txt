@@ -1,0 +1,26 @@
+User-agent: *
+Allow: /
+
+# Don't index user-specific / auth / dashboard areas — nothing useful for
+# search engines here, and some are behind login anyway.
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /verify-email
+Disallow: /dashboard
+Disallow: /profile
+Disallow: /my-internships
+Disallow: /my-attendance
+Disallow: /my-certificates
+Disallow: /notifications
+Disallow: /history
+Disallow: /payment-history
+Disallow: /my-materials
+Disallow: /my-sessions
+Disallow: /trainer/
+Disallow: /admin/
+Disallow: /verify-receipt/
+Disallow: /verify-certificate/
+
+Sitemap: https://www.askittechnologies.com/sitemap.xml
