@@ -38,67 +38,7 @@ async function main() {
   // Seed a handful of realistic courses if none exist yet, so the public site
   // isn't empty on first run.
   const courseCount = await prisma.course.count();
-  if (courseCount === 0) {
-    await prisma.course.createMany({
-      data: [
-        {
-          title: 'Azure Cloud Computing',
-          slug: 'azure-cloud-computing',
-          category: 'Cloud',
-          description:
-            'Master Microsoft Azure from fundamentals to administration and DevOps, with hands-on labs on real cloud infrastructure.',
-          duration: '3-4 Months',
-          syllabus: ['Azure Fundamentals', 'Azure Administration', 'Azure DevOps', 'and more'],
-        },
-        {
-          title: 'Java Full Stack Development',
-          slug: 'java-full-stack-development',
-          category: 'Development',
-          description:
-            'Build production-grade web applications with Core Java, Spring Boot, and modern front-end technologies.',
-          duration: '3-4 Months',
-          syllabus: ['Core Java', 'Spring Boot', 'HTML, CSS, JS', 'and more'],
-        },
-        {
-          title: 'Python Full Stack Development',
-          slug: 'python-full-stack-development',
-          category: 'Development',
-          description:
-            'Go from Python fundamentals to Django/Flask web development and REST APIs used in real-world products.',
-          duration: '3-4 Months',
-          syllabus: ['Core Python', 'Django / Flask', 'HTML, CSS, JS', 'React / Angular'],
-        },
-        {
-          title: '.NET with Java Development',
-          slug: 'dotnet-development',
-          category: 'Development',
-          description:
-            'Develop enterprise applications with the .NET Framework/Core, ASP.NET MVC, and Java integration patterns.',
-          duration: '3-4 Months',
-          syllabus: ['.NET Framework / Core', 'ASP.NET / MVC', 'Java Integration', 'and more'],
-        },
-        {
-          title: 'SQL Database Development',
-          slug: 'sql-database-development',
-          category: 'Database',
-          description:
-            'Learn database design, advanced SQL, SQL Server administration, and performance tuning used by real companies.',
-          duration: '3-4 Months',
-          syllabus: ['SQL Basics', 'Advanced SQL', 'SQL Server', 'Performance Tuning'],
-        },
-        {
-          title: 'AWS & GCP Cloud Technologies',
-          slug: 'aws-gcp-cloud-technologies',
-          category: 'Cloud',
-          description:
-            'Get hands-on with AWS essentials, Google Cloud fundamentals, and real cloud project deployments.',
-          duration: '3-4 Months',
-          syllabus: ['AWS Essentials', 'GCP Fundamentals', 'Cloud Projects', 'and more'],
-        },
-      ],
-    });
-    console.log('✔ Seeded 6 starter courses.');
-  }
+  
 
   // Seed a handful of ready-to-register internships if none exist yet — added
   // so the Internships page and payment checkout have real data to test
