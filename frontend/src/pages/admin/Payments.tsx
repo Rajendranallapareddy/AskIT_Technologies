@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Download, TrendingUp, CheckCircle2, XCircle, Clock, Plus, ShieldCheck,
   MoreVertical, Receipt, CalendarClock, ThumbsUp, ThumbsDown, Layers, X, Filter,
@@ -179,106 +179,107 @@ export default function AdminPayments() {
 
   return (
     <DashboardLayout links={links} title="Admin Portal" pageTitle="Payments">
-      {analytics && (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-          <StatsCard icon={TrendingUp} label="Total Revenue" value={formatMoney(analytics.totalRevenue)} accent="green" />
-          <StatsCard icon={CheckCircle2} label="Successful" value={analytics.successCount} accent="navy" />
-          <StatsCard icon={ShieldCheck} label="Awaiting Approval" value={analytics.pendingApprovalCount ?? 0} accent="orange" />
-          <StatsCard icon={XCircle} label="Failed" value={analytics.failedCount} accent="red" />
-          <StatsCard icon={Clock} label="Pending" value={analytics.pendingCount} accent="orange" />
-        </div>
-      )}
+      <div className="h-[calc(100vh-110px)] overflow-y-auto overflow-x-hidden pr-1 pb-32">
+        {analytics && (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+            <StatsCard icon={TrendingUp} label="Total Revenue" value={formatMoney(analytics.totalRevenue)} accent="green" />
+            <StatsCard icon={CheckCircle2} label="Successful" value={analytics.successCount} accent="navy" />
+            <StatsCard icon={ShieldCheck} label="Awaiting Approval" value={analytics.pendingApprovalCount ?? 0} accent="orange" />
+            <StatsCard icon={XCircle} label="Failed" value={analytics.failedCount} accent="red" />
+            <StatsCard icon={Clock} label="Pending" value={analytics.pendingCount} accent="orange" />
+          </div>
+        )}
 
-      {/* Status tabs — a clear horizontal segmented control with live
-          counts, instead of a wrapping pill list mixed in with the search
-          bar. */}
-      <div className="flex items-center gap-1 mb-4 border-b border-navy-100 overflow-x-auto">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => { setPage(1); setStatus(tab.value); }}
-            className={classNames(
-              'px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 transition -mb-px',
-              status === tab.value ? 'border-orange-500 text-navy-900' : 'border-transparent text-navy-400 hover:text-navy-600'
-            )}
-          >
-            {tab.label}
-            {tab.value && statusCounts[tab.value] !== undefined && (
-              <span className={classNames('ml-1.5 text-xs px-1.5 py-0.5 rounded-full', status === tab.value ? 'bg-orange-100 text-orange-700' : 'bg-navy-50 text-navy-400')}>
-                {statusCounts[tab.value]}
-              </span>
-            )}
-          </button>
-        ))}
+        <div className="flex items-center gap-1 mb-4 border-b border-navy-100 overflow-x-auto">
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => { setPage(1); setStatus(tab.value); }}
+              className={classNames(
+                'px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 transition -mb-px',
+                status === tab.value ? 'border-orange-500 text-navy-900' : 'border-transparent text-navy-400 hover:text-navy-600'
+              )}
+            >
+              {tab.label}
+              {tab.value && statusCounts[tab.value] !== undefined && (
+                <span className={classNames('ml-1.5 text-xs px-1.5 py-0.5 rounded-full', status === tab.value ? 'bg-orange-100 text-orange-700' : 'bg-navy-50 text-navy-400')}>
+                  {statusCounts[tab.value]}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between mb-3">
+          <div className="flex flex-1 gap-3 w-full">
+            <SearchBar value={search} onChange={(v) => { setPage(1); setSearch(v); }} placeholder="Search by name, email, payment no…" />
+            <button
+              onClick={() => setMoreFiltersOpen((v) => !v)}
+              className={classNames(
+                'shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-xl border text-sm font-semibold transition',
+                activeExtraFilterCount > 0 ? 'border-orange-300 bg-orange-50 text-orange-700' : 'border-navy-200 text-navy-600 hover:bg-navy-50'
+              )}
+            >
+              <Filter className="w-4 h-4" /> Filters
+              {activeExtraFilterCount > 0 && <span className="bg-orange-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">{activeExtraFilterCount}</span>}
+            </button>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <Button variant="outline" className="!py-2 text-xs" icon={<Download className="w-3.5 h-3.5" />} onClick={() => handleExport('csv')}>CSV</Button>
+            <Button variant="outline" className="!py-2 text-xs" icon={<Download className="w-3.5 h-3.5" />} onClick={() => handleExport('excel')}>Excel</Button>
+            <Button className="!py-2 text-xs" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setOfflineOpen(true)}>Record Offline</Button>
+          </div>
+        </div>
+
+        {moreFiltersOpen && (
+          <div className="card p-4 mb-4 grid sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+            <div>
+              <label className="label">Method</label>
+              <select className="input-field" value={method} onChange={(e) => { setPage(1); setMethod(e.target.value); }}>
+                <option value="">Any</option>
+                <option value="CARD">Card</option>
+                <option value="UPI">UPI</option>
+                <option value="NETBANKING">Netbanking</option>
+                <option value="BANK_TRANSFER">Bank Transfer</option>
+                <option value="OFFLINE">Offline / Cash</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Internship</label>
+              <select className="input-field" value={internshipId} onChange={(e) => { setPage(1); setInternshipId(e.target.value); }}>
+                <option value="">All internships</option>
+                {internships.map((i) => <option key={i.id} value={i.id}>{i.title}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">From</label>
+              <input type="date" className="input-field" value={from} onChange={(e) => { setPage(1); setFrom(e.target.value); }} />
+            </div>
+            <div>
+              <label className="label">To</label>
+              <input type="date" className="input-field" value={to} onChange={(e) => { setPage(1); setTo(e.target.value); }} />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 text-sm font-semibold text-navy-600 cursor-pointer">
+                <input type="checkbox" className="w-4 h-4" checked={installmentsOnly} onChange={(e) => { setPage(1); setInstallmentsOnly(e.target.checked); }} />
+                Installments only
+              </label>
+              {activeExtraFilterCount > 0 && (
+                <button onClick={clearExtraFilters} className="text-xs font-semibold text-navy-400 hover:text-red-500 flex items-center gap-1 ml-auto">
+                  <X className="w-3.5 h-3.5" /> Clear
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        <p className="text-xs text-navy-400 mb-2">{payments ? `${total} payment${total === 1 ? '' : 's'} found` : 'Loading…'}</p>
+
+        <div className="relative overflow-visible pb-40">
+          <DataTable columns={columns} rows={payments} keyField={(p) => p.id} emptyTitle="No payments found" />
+        </div>
+        <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       </div>
-
-      <div className="flex flex-col sm:flex-row gap-3 items-center justify-between mb-3">
-        <div className="flex flex-1 gap-3 w-full">
-          <SearchBar value={search} onChange={(v) => { setPage(1); setSearch(v); }} placeholder="Search by name, email, payment no…" />
-          <button
-            onClick={() => setMoreFiltersOpen((v) => !v)}
-            className={classNames(
-              'shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-xl border text-sm font-semibold transition',
-              activeExtraFilterCount > 0 ? 'border-orange-300 bg-orange-50 text-orange-700' : 'border-navy-200 text-navy-600 hover:bg-navy-50'
-            )}
-          >
-            <Filter className="w-4 h-4" /> Filters
-            {activeExtraFilterCount > 0 && <span className="bg-orange-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">{activeExtraFilterCount}</span>}
-          </button>
-        </div>
-        <div className="flex gap-2 shrink-0">
-          <Button variant="outline" className="!py-2 text-xs" icon={<Download className="w-3.5 h-3.5" />} onClick={() => handleExport('csv')}>CSV</Button>
-          <Button variant="outline" className="!py-2 text-xs" icon={<Download className="w-3.5 h-3.5" />} onClick={() => handleExport('excel')}>Excel</Button>
-          <Button className="!py-2 text-xs" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setOfflineOpen(true)}>Record Offline</Button>
-        </div>
-      </div>
-
-      {moreFiltersOpen && (
-        <div className="card p-4 mb-4 grid sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
-          <div>
-            <label className="label">Method</label>
-            <select className="input-field" value={method} onChange={(e) => { setPage(1); setMethod(e.target.value); }}>
-              <option value="">Any</option>
-              <option value="CARD">Card</option>
-              <option value="UPI">UPI</option>
-              <option value="NETBANKING">Netbanking</option>
-              <option value="BANK_TRANSFER">Bank Transfer</option>
-              <option value="OFFLINE">Offline / Cash</option>
-            </select>
-          </div>
-          <div>
-            <label className="label">Internship</label>
-            <select className="input-field" value={internshipId} onChange={(e) => { setPage(1); setInternshipId(e.target.value); }}>
-              <option value="">All internships</option>
-              {internships.map((i) => <option key={i.id} value={i.id}>{i.title}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">From</label>
-            <input type="date" className="input-field" value={from} onChange={(e) => { setPage(1); setFrom(e.target.value); }} />
-          </div>
-          <div>
-            <label className="label">To</label>
-            <input type="date" className="input-field" value={to} onChange={(e) => { setPage(1); setTo(e.target.value); }} />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 text-sm font-semibold text-navy-600 cursor-pointer">
-              <input type="checkbox" className="w-4 h-4" checked={installmentsOnly} onChange={(e) => { setPage(1); setInstallmentsOnly(e.target.checked); }} />
-              Installments only
-            </label>
-            {activeExtraFilterCount > 0 && (
-              <button onClick={clearExtraFilters} className="text-xs font-semibold text-navy-400 hover:text-red-500 flex items-center gap-1 ml-auto">
-                <X className="w-3.5 h-3.5" /> Clear
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      <p className="text-xs text-navy-400 mb-2">{payments ? `${total} payment${total === 1 ? '' : 's'} found` : 'Loading…'}</p>
-
-      <DataTable columns={columns} rows={payments} keyField={(p) => p.id} emptyTitle="No payments found" />
-      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
       <OfflinePaymentModal isOpen={offlineOpen} onClose={() => setOfflineOpen(false)} onSuccess={load} />
       <SettlePaymentModal payment={settleTarget} onClose={() => setSettleTarget(null)} onSuccess={load} />
@@ -287,6 +288,7 @@ export default function AdminPayments() {
       <StudentPaymentDrawer userId={studentDrawerId} onClose={() => setStudentDrawerId(null)} onChanged={load} />
     </DashboardLayout>
   );
+
 }
 
 // Compact per-row action menu (kebab button + dropdown) — replaces a row
@@ -299,56 +301,115 @@ function PaymentActionsMenu({
   payment: any; isOpen: boolean; onToggle: () => void; onClose: () => void; approving: boolean;
   onResend: () => void; onApprove: () => void; onReject: () => void; onMarkPaid: () => void; onSetDueDate: () => void; onViewStudent: () => void;
 }) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+
   const hasActions =
     (payment.status === 'SUCCESS' && payment.receipt) ||
     payment.status === 'PENDING_APPROVAL' ||
-    payment.status === 'PENDING' || payment.status === 'FAILED' ||
+    payment.status === 'PENDING' ||
+    payment.status === 'FAILED' ||
     (payment.installmentPlanId && payment.status !== 'SUCCESS');
 
+  const updateMenuPosition = () => {
+    if (!buttonRef.current) return;
+
+    const rect = buttonRef.current.getBoundingClientRect();
+    const menuWidth = 208;
+    const menuHeight = 210;
+    const spacing = 6;
+
+    let left = rect.right - menuWidth;
+    if (left < 8) left = 8;
+    if (left + menuWidth > window.innerWidth - 8) left = window.innerWidth - menuWidth - 8;
+
+    const spaceBelow = window.innerHeight - rect.bottom;
+    let top = spaceBelow >= menuHeight ? rect.bottom + spacing : rect.top - menuHeight - spacing;
+    if (top < 8) top = 8;
+
+    setMenuPosition({ top, left });
+  };
+
+  const handleToggle = () => {
+    if (!isOpen) updateMenuPosition();
+    onToggle();
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    updateMenuPosition();
+    const handleWindowChange = () => updateMenuPosition();
+
+    window.addEventListener('resize', handleWindowChange);
+    window.addEventListener('scroll', handleWindowChange, true);
+
+    return () => {
+      window.removeEventListener('resize', handleWindowChange);
+      window.removeEventListener('scroll', handleWindowChange, true);
+    };
+  }, [isOpen]);
+
   return (
-    <div className="relative inline-block text-left" onClick={(e) => e.stopPropagation()}>
-      <button onClick={onToggle} className="p-2 rounded-lg hover:bg-navy-50 text-navy-400 hover:text-navy-700">
+    <div className="inline-block text-left" onClick={(e) => e.stopPropagation()}>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={handleToggle}
+        className="p-2 rounded-lg hover:bg-navy-50 text-navy-400 hover:text-navy-700"
+        aria-label="Payment actions"
+      >
         <MoreVertical className="w-4 h-4" />
       </button>
+
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-10" onClick={onClose} />
-          <div className="absolute right-0 mt-1 w-52 bg-white rounded-xl shadow-xl border border-navy-100 py-1.5 z-20">
-            <button onClick={onViewStudent} className="w-full text-left px-3.5 py-2 text-xs font-semibold text-navy-600 hover:bg-navy-50 flex items-center gap-2">
+          <div className="fixed inset-0 z-[9998]" onClick={onClose} />
+          <div
+            className="fixed w-52 bg-white rounded-xl shadow-2xl border border-navy-100 py-1.5 z-[9999]"
+            style={{ top: `${menuPosition.top}px`, left: `${menuPosition.left}px` }}
+          >
+            <button onClick={onViewStudent} className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-navy-600 hover:bg-navy-50 flex items-center gap-2">
               View Student History
             </button>
+
             {payment.status === 'SUCCESS' && payment.receipt && (
-              <button onClick={onResend} className="w-full text-left px-3.5 py-2 text-xs font-semibold text-orange-600 hover:bg-orange-50 flex items-center gap-2">
+              <button onClick={onResend} className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-orange-600 hover:bg-orange-50 flex items-center gap-2">
                 <Receipt className="w-3.5 h-3.5" /> Resend Receipt
               </button>
             )}
+
             {payment.status === 'PENDING_APPROVAL' && (
               <>
-                <button onClick={onApprove} disabled={approving} className="w-full text-left px-3.5 py-2 text-xs font-semibold text-green-600 hover:bg-green-50 flex items-center gap-2 disabled:opacity-50">
+                <button onClick={onApprove} disabled={approving} className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-green-600 hover:bg-green-50 flex items-center gap-2 disabled:opacity-50">
                   <ThumbsUp className="w-3.5 h-3.5" /> {approving ? 'Approving…' : 'Approve'}
                 </button>
-                <button onClick={onReject} className="w-full text-left px-3.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2">
+                <button onClick={onReject} className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2">
                   <ThumbsDown className="w-3.5 h-3.5" /> Reject
                 </button>
               </>
             )}
+
             {(payment.status === 'PENDING' || payment.status === 'FAILED') && (
-              <button onClick={onMarkPaid} className="w-full text-left px-3.5 py-2 text-xs font-semibold text-green-600 hover:bg-green-50 flex items-center gap-2">
+              <button onClick={onMarkPaid} className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-green-600 hover:bg-green-50 flex items-center gap-2">
                 <CheckCircle2 className="w-3.5 h-3.5" /> Mark Paid
               </button>
             )}
+
             {payment.installmentPlanId && payment.status !== 'SUCCESS' && (
-              <button onClick={onSetDueDate} className="w-full text-left px-3.5 py-2 text-xs font-semibold text-navy-600 hover:bg-navy-50 flex items-center gap-2">
+              <button onClick={onSetDueDate} className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-navy-600 hover:bg-navy-50 flex items-center gap-2">
                 <CalendarClock className="w-3.5 h-3.5" /> Set Due Date
               </button>
             )}
-            {!hasActions && <p className="px-3.5 py-2 text-xs text-navy-300">No actions available</p>}
+
+            {!hasActions && <p className="px-3.5 py-2.5 text-xs text-navy-300">No actions available</p>}
           </div>
         </>
       )}
     </div>
   );
 }
+
 
 // Super Admin's rejection path for a PENDING_APPROVAL payment — records a
 // reason the student can see, marks the payment FAILED, and leaves the

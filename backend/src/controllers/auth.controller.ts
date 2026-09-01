@@ -22,52 +22,199 @@ function setAuthCookies(res: Response, accessToken: string, refreshToken: string
   res.cookie(COOKIE_NAMES.REFRESH_TOKEN, refreshToken, { ...cookieOpts, maxAge: 7 * 24 * 60 * 60 * 1000 });
 }
 
-export async function register(req: Request, res: Response, next: NextFunction) {
+export async function register(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
   try {
     const {
-      fullName, email, mobileNumber, password, gender, dateOfBirth,
-      collegeName, university, degree, branch, graduationYear,
-      address, city, state, country,
+      fullName,
+      email,
+      mobileNumber,
+      password,
+      gender,
+      dateOfBirth,
+      collegeName,
+      university,
+      degree,
+      branch,
+      graduationYear,
+      address,
+      city,
+      state,
+      country,
     } = req.body;
 
-    const existing = await prisma.user.findFirst({ where: { OR: [{ email }, { mobileNumber }] } });
+    const normalizedEmail =
+      String(email).trim().toLowerCase();
+
+    const normalizedMobile =
+      String(mobileNumber).trim();
+
+    const existing =
+      await prisma.user.findFirst({
+        where: {
+          OR: [
+            {
+              email: normalizedEmail,
+            },
+            {
+              mobileNumber:
+                normalizedMobile,
+            },
+          ],
+        },
+      });
+
     if (existing) {
-      throw new AppError('An account with this email or mobile number already exists', 409);
+      if (
+        existing.email.toLowerCase() ===
+        normalizedEmail
+      ) {
+        throw new AppError(
+          'An account with this email already exists. Please login.',
+          409
+        );
+      }
+
+      throw new AppError(
+        'An account with this mobile number already exists. Please login.',
+        409
+      );
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
-    const emailVerifyToken = crypto.randomBytes(32).toString('hex');
+    const passwordHash =
+      await bcrypt.hash(
+        password,
+        12
+      );
 
-    const user = await prisma.user.create({
-      data: {
-        fullName, email, mobileNumber, passwordHash,
-        gender, dateOfBirth, collegeName, university, degree, branch,
-        graduationYear: graduationYear ? Number(graduationYear) : undefined,
-        address, city, state, country,
-        emailVerifyToken,
-        role: 'USER',
-      },
-    });
+    const emailVerifyToken =
+      crypto
+        .randomBytes(32)
+        .toString('hex');
 
-    const verifyLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email?token=${emailVerifyToken}`;
-    const emailSent = await sendMail({
-      to: email,
-      subject: 'Your ASK IT Technologies account has been created',
-      html: verificationEmailTemplate(fullName, verifyLink),
-    });
+    const user =
+      await prisma.user.create({
+        data: {
+          fullName:
+            String(fullName).trim(),
 
-    await logActivity({
+          email:
+            normalizedEmail,
+
+          mobileNumber:
+            normalizedMobile,
+
+          passwordHash,
+          gender,
+          dateOfBirth,
+
+          collegeName:
+            collegeName?.trim(),
+
+          university:
+            university?.trim(),
+
+          degree:
+            degree?.trim(),
+
+          branch:
+            branch?.trim(),
+
+          graduationYear:
+            graduationYear
+              ? Number(
+                  graduationYear
+                )
+              : undefined,
+
+          address:
+            address?.trim(),
+
+          city:
+            city?.trim(),
+
+          state:
+            state?.trim(),
+
+          country:
+            country?.trim() ||
+            'India',
+
+          emailVerifyToken,
+          role: 'USER',
+        },
+      });
+
+    const frontendUrl =
+      process.env.FRONTEND_URL ||
+      'http://localhost:5173';
+
+    const verifyLink =
+      `${frontendUrl}/verify-email?token=${emailVerifyToken}`;
+
+    /*
+     * IMPORTANT:
+     * Do not await SMTP here.
+     *
+     * Account creation should finish immediately.
+     * Email delivery happens independently in the
+     * background.
+     */
+    void sendMail({
+      to: normalizedEmail,
+      subject:
+        'Welcome to AskIT Technologies - Verify Your Email',
+      html:
+        verificationEmailTemplate(
+          fullName,
+          verifyLink
+        ),
+    })
+      .then((sent) => {
+        if (sent) {
+          console.log(
+            `[REGISTER] Verification email sent to ${normalizedEmail}`
+          );
+        } else {
+          console.warn(
+            `[REGISTER] Account created but verification email was not sent to ${normalizedEmail}`
+          );
+        }
+      })
+      .catch((error) => {
+        console.error(
+          '[REGISTER] Verification email error:',
+          error
+        );
+      });
+
+    /*
+     * Activity logging should also not delay
+     * the account creation response.
+     */
+    void logActivity({
       actorId: user.id,
       action: 'USER_REGISTER',
-      description: `${fullName} registered a new account`,
+      description:
+        `${fullName} registered a new account`,
       ipAddress: req.ip,
+    }).catch((error) => {
+      console.error(
+        '[REGISTER] Activity log error:',
+        error
+      );
     });
 
-    res.status(201).json({
+    /*
+     * Respond immediately.
+     */
+    return res.status(201).json({
       success: true,
-      message: emailSent
-        ? 'Account created! Please check your email to verify your account.'
-        : 'Account created! (Confirmation email was not sent — SMTP is not configured on this server yet.)',
+      message:
+        'Account created successfully. Please login.',
       data: sanitizeUser(user),
     });
   } catch (err) {

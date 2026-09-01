@@ -16,13 +16,23 @@ export const mailTransport = hasSmtpConfig
       host: smtpHost,
       port: smtpPort,
 
-      // Port 465 = SSL/TLS from the beginning.
-      // Port 587 normally starts unsecured and upgrades with STARTTLS.
+      // Port 465 requires SSL/TLS immediately.
+      // Port 587 normally uses STARTTLS.
       secure: smtpPort === 465,
 
       auth: {
         user: smtpUser,
         pass: smtpPass,
+      },
+
+      // Prevent SMTP problems from hanging requests
+      // for a very long time.
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 15000,
+
+      tls: {
+        minVersion: 'TLSv1.2',
       },
     })
   : null;
