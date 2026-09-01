@@ -52,7 +52,6 @@ export default function Contact() {
               <span className="w-11 h-11 rounded-xl bg-navy-700 text-white flex items-center justify-center"><MapPin className="w-5 h-5" /></span>
               <div>
                 <p className="text-xs text-navy-400">Visit Us</p>
-                <p className="font-semibold text-navy-800">{BRAND.address}</p>
               </div>
             </div>
           </div>
