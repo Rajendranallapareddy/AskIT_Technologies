@@ -2,9 +2,9 @@ import { body, param, query } from 'express-validator';
 import { PASSWORD_REGEX, MOBILE_REGEX } from './constants';
 
 export const registerValidation = [
-  body('fullName').trim().isLength({ min: 2, max: 100 }).withMessage('Full name is required'),
-  body('email').trim().isEmail().withMessage('A valid email is required').normalizeEmail(),
-  body('mobileNumber').matches(MOBILE_REGEX).withMessage('A valid 10-digit mobile number is required'),
+  body('fullName').trim().isLength({ min: 2, max: 100 }).withMessage('Please enter your full name'),
+  body('email').trim().isEmail().withMessage('Please enter a valid email address').normalizeEmail(),
+  body('mobileNumber').matches(MOBILE_REGEX).withMessage('Please enter a valid 10-digit mobile number'),
   body('password')
     .matches(PASSWORD_REGEX)
     .withMessage(
@@ -16,8 +16,8 @@ export const registerValidation = [
     }
     return true;
   }),
-  body('gender').optional().isIn(['MALE', 'FEMALE', 'OTHER']),
-  body('dateOfBirth').optional().isISO8601().toDate(),
+  body('gender').notEmpty().withMessage('Please select your gender').bail().isIn(['MALE', 'FEMALE', 'OTHER']).withMessage('Please select a valid gender'),
+  body('dateOfBirth').notEmpty().withMessage('Please enter your date of birth').bail().isISO8601().withMessage('Please enter a valid date of birth').toDate(),
 ];
 
 export const loginValidation = [

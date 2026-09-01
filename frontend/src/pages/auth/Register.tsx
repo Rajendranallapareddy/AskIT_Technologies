@@ -54,20 +54,20 @@ export default function Register() {
             <div><label className="label">Mobile Number</label><input required className="input-field" value={form.mobileNumber} onChange={update('mobileNumber')} placeholder="10-digit number" /></div>
             <div>
               <label className="label">Gender</label>
-              <select className="input-field" value={form.gender} onChange={update('gender')}>
+              <select required className="input-field" value={form.gender} onChange={update('gender')}>
                 <option value="">Select</option><option value="MALE">Male</option><option value="FEMALE">Female</option><option value="OTHER">Other</option>
               </select>
             </div>
-            <div><label className="label">Date of Birth</label><input type="date" className="input-field" value={form.dateOfBirth} onChange={update('dateOfBirth')} /></div>
-            <div><label className="label">Graduation Year</label><input type="number" className="input-field" value={form.graduationYear} onChange={update('graduationYear')} /></div>
-            <div><label className="label">College Name</label><input className="input-field" value={form.collegeName} onChange={update('collegeName')} /></div>
-            <div><label className="label">University</label><input className="input-field" value={form.university} onChange={update('university')} /></div>
-            <div><label className="label">Degree</label><input className="input-field" value={form.degree} onChange={update('degree')} placeholder="B.Tech, BCA…" /></div>
-            <div><label className="label">Branch</label><input className="input-field" value={form.branch} onChange={update('branch')} placeholder="CSE, IT…" /></div>
-            <div><label className="label">City</label><input className="input-field" value={form.city} onChange={update('city')} /></div>
-            <div><label className="label">State</label><input className="input-field" value={form.state} onChange={update('state')} /></div>
+            <div><label className="label">Date of Birth</label><input required type="date" className="input-field" value={form.dateOfBirth} onChange={update('dateOfBirth')} /></div>
+            <div><label className="label">Graduation Year</label><input required type="number" className="input-field" value={form.graduationYear} onChange={update('graduationYear')} /></div>
+            <div><label className="label">College Name</label><input required className="input-field" value={form.collegeName} onChange={update('collegeName')} /></div>
+            <div><label className="label">University</label><input required className="input-field" value={form.university} onChange={update('university')} /></div>
+            <div><label className="label">Degree</label><input required className="input-field" value={form.degree} onChange={update('degree')} placeholder="B.Tech, BCA…" /></div>
+            <div><label className="label">Branch</label><input required className="input-field" value={form.branch} onChange={update('branch')} placeholder="CSE, IT…" /></div>
+            <div><label className="label">City</label><input required className="input-field" value={form.city} onChange={update('city')} /></div>
+            <div><label className="label">State</label><input required className="input-field" value={form.state} onChange={update('state')} /></div>
           </div>
-          <div><label className="label">Address</label><input className="input-field" value={form.address} onChange={update('address')} /></div>
+          <div><label className="label">Address</label><input required className="input-field" value={form.address} onChange={update('address')} /></div>
 
           <div className="grid sm:grid-cols-2 gap-4">
             <div>

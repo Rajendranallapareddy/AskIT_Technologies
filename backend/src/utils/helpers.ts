@@ -14,6 +14,17 @@ export function slugify(text: string): string {
   );
 }
 
+export function getErrorMessage(err: any): string {
+  const data = err?.response?.data;
+  // Field-specific validation errors (missing DOB, bad mobile number, etc.)
+  // come back as data.errors[0].message — show that instead of the generic
+  // "Validation failed" top-level message.
+  if (data?.errors?.length) {
+    return data.errors[0].message;
+  }
+  return data?.message || err?.message || 'Something went wrong. Please try again.';
+}
+
 export function generateCertificateNumber(): string {
   const year = new Date().getFullYear();
   const random = Math.floor(100000 + Math.random() * 900000);
