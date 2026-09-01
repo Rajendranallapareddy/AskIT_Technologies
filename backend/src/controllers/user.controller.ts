@@ -5,7 +5,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import { AppError } from '../middleware/error.middleware';
 import { sanitizeUser } from '../utils/helpers';
 import { logActivity } from '../services/audit.service';
-import { uploadProfilePictureToCloud, deleteCloudFileByUrl, } from '../services/cloudStorage.service';
+import { uploadProfilePictureToCloud, deleteCloudFile, } from '../services/cloudStorage.service';
 
 // GET /api/users/dashboard - Summary data for the logged-in user's dashboard.
 export async function getDashboard(req: AuthRequest, res: Response, next: NextFunction) {
@@ -152,7 +152,7 @@ export async function updateProfilePicture(
       existingUser.profilePicture !==
         permanentUrl
     ) {
-      void deleteCloudFileByUrl(
+      void deleteCloudFile(
         existingUser.profilePicture
       );
     }
