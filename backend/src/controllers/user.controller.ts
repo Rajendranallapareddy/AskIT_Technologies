@@ -5,6 +5,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import { AppError } from '../middleware/error.middleware';
 import { sanitizeUser } from '../utils/helpers';
 import { logActivity } from '../services/audit.service';
+import { uploadProfilePictureToCloud, deleteCloudFileByUrl, } from '../services/cloudStorage.service';
 
 // GET /api/users/dashboard - Summary data for the logged-in user's dashboard.
 export async function getDashboard(req: AuthRequest, res: Response, next: NextFunction) {
@@ -96,15 +97,75 @@ export async function updateProfile(req: AuthRequest, res: Response, next: NextF
 }
 
 // PUT /api/users/profile/picture
-export async function updateProfilePicture(req: AuthRequest, res: Response, next: NextFunction) {
+export async function updateProfilePicture(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
   try {
-    if (!req.file) throw new AppError('No image uploaded', 400);
-    const relativePath = `/uploads/profiles/${req.file.filename}`;
-    const user = await prisma.user.update({
-      where: { id: req.user!.id },
-      data: { profilePicture: relativePath },
+    if (!req.file) {
+      throw new AppError(
+        'No image uploaded',
+        400
+      );
+    }
+
+    const existingUser =
+      await prisma.user.findUnique({
+        where: {
+          id: req.user!.id,
+        },
+
+        select: {
+          id: true,
+          profilePicture: true,
+        },
+      });
+
+    if (!existingUser) {
+      throw new AppError(
+        'User not found',
+        404
+      );
+    }
+
+    const permanentUrl =
+      await uploadProfilePictureToCloud(
+        req.file,
+        req.user!.id
+      );
+
+    const user =
+      await prisma.user.update({
+        where: {
+          id: req.user!.id,
+        },
+
+        data: {
+          profilePicture:
+            permanentUrl,
+        },
+      });
+
+    if (
+      existingUser.profilePicture &&
+      existingUser.profilePicture !==
+        permanentUrl
+    ) {
+      void deleteCloudFileByUrl(
+        existingUser.profilePicture
+      );
+    }
+
+    return res.json({
+      success: true,
+
+      message:
+        'Profile picture updated successfully',
+
+      data:
+        sanitizeUser(user),
     });
-    res.json({ success: true, message: 'Profile picture updated', data: sanitizeUser(user) });
   } catch (err) {
     next(err);
   }
