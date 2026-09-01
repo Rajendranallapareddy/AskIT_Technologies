@@ -90,7 +90,9 @@ router.post('/gallery', requirePermission('manageGallery'), uploadGalleryImageMw
 router.delete('/gallery/:id', requirePermission('manageGallery'), adminController.deleteGalleryImage);
 
 // Contact
+// Contact
 router.get('/contacts', requirePermission('manageContactRequests'), adminController.listContactRequests);
+router.post('/contacts/:id/reply', requirePermission('manageContactRequests'), adminController.replyToContactRequest);
 router.put('/contacts/:id', requirePermission('manageContactRequests'), adminController.updateContactStatus);
 router.delete('/contacts/:id', requirePermission('manageContactRequests'), adminController.deleteContactRequest);
 

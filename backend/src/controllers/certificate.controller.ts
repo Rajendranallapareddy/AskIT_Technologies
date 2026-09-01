@@ -1,5 +1,6 @@
 import { Response, NextFunction } from 'express';
 import path from 'path';
+import fs from 'fs';
 import { prisma } from '../config/db';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { AppError } from '../middleware/error.middleware';
@@ -26,6 +27,126 @@ export async function getMyCertificates(req: AuthRequest, res: Response, next: N
       orderBy: { createdAt: 'desc' },
     });
     res.json({ success: true, data: certificates });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/users/certificates/:id/download
+//
+// Downloads a certificate owned by the logged-in student.
+// If Cloud Run has restarted and the locally-generated PDF has disappeared,
+// regenerate it automatically before sending it.
+export async function downloadMyCertificate(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const certificate = await prisma.certificate.findFirst({
+      where: {
+        id: req.params.id,
+        userId: req.user!.id,
+      },
+      include: {
+        user: true,
+        internship: {
+          include: {
+            trainer: {
+              include: {
+                user: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (
+      !certificate ||
+      certificate.status !== 'ISSUED'
+    ) {
+      throw new AppError(
+        'Certificate not found or not issued yet',
+        404
+      );
+    }
+
+    let fileUrl = certificate.fileUrl;
+
+    let filePath =
+      fileUrl &&
+      fileUrl.startsWith('/uploads/certificates/')
+        ? path.join(
+            process.cwd(),
+            fileUrl.replace(/^\//, '')
+          )
+        : '';
+
+    // Cloud Run local files are temporary.
+    // If the PDF disappeared after a restart/scale-down,
+    // regenerate it using the data stored in PostgreSQL.
+    if (!filePath || !fs.existsSync(filePath)) {
+      const issuedDate =
+        certificate.issuedAt || new Date();
+
+      fileUrl = await generateCertificatePdf({
+        certificateNo: certificate.certificateNo,
+        studentName: certificate.user.fullName,
+
+        studentPhotoPath: resolveProfilePicturePath(
+          certificate.user.profilePicture
+        ),
+
+        internshipTitle:
+          certificate.internship.title,
+
+        duration:
+          certificate.internship.duration,
+
+        startDate:
+          certificate.internship.startDate,
+
+        endDate:
+          certificate.internship.endDate,
+
+        trainerName:
+          certificate.internship.trainer?.user.fullName,
+
+        issuedDate,
+      });
+
+      await prisma.certificate.update({
+        where: {
+          id: certificate.id,
+        },
+        data: {
+          fileUrl,
+        },
+      });
+
+      filePath = path.join(
+        process.cwd(),
+        fileUrl.replace(/^\//, '')
+      );
+    }
+
+    if (!fs.existsSync(filePath)) {
+      throw new AppError(
+        'Certificate PDF could not be generated',
+        500
+      );
+    }
+
+    res.setHeader(
+      'Content-Type',
+      'application/pdf'
+    );
+
+    return res.download(
+      filePath,
+      `${certificate.certificateNo}.pdf`
+    );
   } catch (err) {
     next(err);
   }

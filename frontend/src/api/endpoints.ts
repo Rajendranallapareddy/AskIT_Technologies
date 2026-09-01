@@ -42,6 +42,7 @@ export const userApi = {
   cancelRegistration: (id: string) => apiClient.put(`/users/registrations/${id}/cancel`),
   attendance: () => apiClient.get('/users/attendance'),
   certificates: () => apiClient.get('/users/certificates'),
+  downloadCertificate: (id: string) => apiClient.get(`/users/certificates/${id}/download`,{ responseType: 'blob', }),  
   materials: () => apiClient.get('/users/materials'),
   sessions: () => apiClient.get('/users/sessions'),
 };
@@ -99,8 +100,8 @@ export const adminApi = {
   updateAnnouncement: (id: string, data: any) => apiClient.put(`/admin/announcements/${id}`, data),
   deleteAnnouncement: (id: string) => apiClient.delete(`/admin/announcements/${id}`),
 
-  contacts: (params?: any) => apiClient.get('/admin/contacts', { params }),
-  updateContact: (id: string, status: string) => apiClient.put(`/admin/contacts/${id}`, { status }),
+  contacts: (params?: any) => apiClient.get('/admin/contacts', { params }), replyToContact: ( id: string, message: string ) => apiClient.post( `/admin/contacts/${id}/reply`, { message } ), 
+  updateContact: ( id: string, status: string ) => apiClient.put( `/admin/contacts/${id}`, { status } ),
 
   courses: () => apiClient.get('/public/courses'),
   createCourse: (data: any) => apiClient.post('/admin/courses', data),

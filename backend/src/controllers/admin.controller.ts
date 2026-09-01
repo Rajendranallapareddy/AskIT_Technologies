@@ -5,6 +5,16 @@ import { AppError } from '../middleware/error.middleware';
 import { slugify, paginate, buildMeta, sanitizeUser } from '../utils/helpers';
 import { PASSWORD_REGEX } from '../utils/constants';
 import { logActivity } from '../services/audit.service';
+import { sendMail } from '../services/email.service';
+
+function escapeHtml(value: string): string {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+} 
 
 // GET /api/admin/dashboard
 export async function getAdminDashboard(_req: AuthRequest, res: Response, next: NextFunction) {
@@ -523,6 +533,183 @@ export async function listContactRequests(req: AuthRequest, res: Response, next:
     if (status) where.status = status;
     const contacts = await prisma.contactRequest.findMany({ where, orderBy: { createdAt: 'desc' } });
     res.json({ success: true, data: contacts });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/admin/contacts/:id/reply
+export async function replyToContactRequest(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const message = String(req.body.message || '').trim();
+
+    if (!message) {
+      throw new AppError('Reply message is required', 400);
+    }
+
+    if (message.length > 5000) {
+      throw new AppError(
+        'Reply message cannot exceed 5000 characters',
+        400
+      );
+    }
+
+    const contact = await prisma.contactRequest.findUnique({
+      where: {
+        id: req.params.id,
+      },
+    });
+
+    if (!contact) {
+      throw new AppError('Contact request not found', 404);
+    }
+
+    const originalSubject =
+      contact.subject?.trim() ||
+      'Your enquiry to AskIT Technologies';
+
+    const subject = originalSubject
+      .toLowerCase()
+      .startsWith('re:')
+      ? originalSubject
+      : `Re: ${originalSubject}`;
+
+    const safeName = escapeHtml(contact.name);
+    const safeReply = escapeHtml(message).replace(/\n/g, '<br />');
+    const safeOriginalMessage = escapeHtml(contact.message).replace(
+      /\n/g,
+      '<br />'
+    );
+
+    const html = `
+      <div
+        style="
+          font-family:Arial,Helvetica,sans-serif;
+          max-width:640px;
+          margin:0 auto;
+          color:#1f2937;
+          line-height:1.6;
+        "
+      >
+        <div
+          style="
+            background:#0f1d45;
+            padding:22px;
+            text-align:center;
+            border-radius:8px 8px 0 0;
+          "
+        >
+          <div
+            style="
+              font-size:22px;
+              font-weight:800;
+              color:#ffffff;
+            "
+          >
+            AskIT
+            <span style="color:#f97316;">
+              Technologies
+            </span>
+          </div>
+        </div>
+
+        <div
+          style="
+            padding:28px;
+            border:1px solid #e5e7eb;
+            border-top:none;
+            border-radius:0 0 8px 8px;
+          "
+        >
+          <p>Dear ${safeName},</p>
+
+          <div style="margin:20px 0;">
+            ${safeReply}
+          </div>
+
+          <p style="margin-top:28px;">
+            Regards,<br />
+            <strong>AskIT Technologies</strong><br />
+            <a
+              href="mailto:info@askittechnologies.com"
+              style="color:#f97316;"
+            >
+              info@askittechnologies.com
+            </a>
+          </p>
+
+          <hr
+            style="
+              border:none;
+              border-top:1px solid #e5e7eb;
+              margin:28px 0;
+            "
+          />
+
+          <p
+            style="
+              color:#6b7280;
+              font-size:12px;
+              margin-bottom:6px;
+            "
+          >
+            Your original enquiry:
+          </p>
+
+          <div
+            style="
+              background:#f9fafb;
+              padding:14px;
+              border-radius:6px;
+              color:#6b7280;
+              font-size:13px;
+            "
+          >
+            ${safeOriginalMessage}
+          </div>
+        </div>
+      </div>
+    `;
+
+    const sent = await sendMail({
+      to: contact.email,
+      subject,
+      html,
+    });
+
+    // Do NOT mark it replied when SMTP failed.
+    if (!sent) {
+      throw new AppError(
+        'Official email is not configured. Please check the SMTP settings.',
+        503
+      );
+    }
+
+    const updated = await prisma.contactRequest.update({
+      where: {
+        id: contact.id,
+      },
+      data: {
+        status: 'REPLIED',
+      },
+    });
+
+    await logActivity({
+      actorId: req.user!.id,
+      action: 'CONTACT_REPLY',
+      description: `Replied to contact request from ${contact.email}`,
+      ipAddress: req.ip,
+    });
+
+    res.json({
+      success: true,
+      message: 'Reply sent successfully from AskIT Technologies',
+      data: updated,
+    });
   } catch (err) {
     next(err);
   }
