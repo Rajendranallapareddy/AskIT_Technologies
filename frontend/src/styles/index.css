@@ -4,60 +4,234 @@
 
 html {
   scroll-behavior: smooth;
-  /* Defensive: some decorative absolutely-positioned elements (hero blurs,
-     floating shapes) intentionally sit partly outside their container for
-     effect — this stops any of them from ever introducing a horizontal
-     scrollbar on narrow (mobile/tablet) viewports. */
   overflow-x: hidden;
   width: 100%;
 }
 
 body {
   @apply bg-white text-navy-900 font-sans antialiased;
+
   overflow-x: hidden;
   width: 100%;
 }
 
+/*
+|--------------------------------------------------------------------------
+| GLOBAL OVERFLOW PROTECTION
+|--------------------------------------------------------------------------
+|
+| Prevent long:
+| - student names
+| - trainer names
+| - admin / super admin names
+| - email addresses
+| - certificate numbers
+| - payment numbers
+| - internship titles
+|
+| from breaking cards, tables or layouts.
+|
+*/
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+/*
+ * Long email addresses normally have no spaces.
+ * overflow-wrap:anywhere allows them to wrap only
+ * when the available area becomes too small.
+ */
+p,
+span,
+a,
+td,
+th,
+label {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+/*
+ * Images must never become wider than
+ * their parent containers.
+ */
+img {
+  max-width: 100%;
+}
+
+/*
+|--------------------------------------------------------------------------
+| SCROLLBAR
+|--------------------------------------------------------------------------
+*/
+
 ::-webkit-scrollbar {
   width: 10px;
+  height: 10px;
 }
+
 ::-webkit-scrollbar-track {
   background: #eef2fb;
 }
+
 ::-webkit-scrollbar-thumb {
   background: #284591;
   border-radius: 999px;
 }
 
+/*
+|--------------------------------------------------------------------------
+| COMPONENTS
+|--------------------------------------------------------------------------
+*/
+
 @layer components {
   .container-page {
     @apply max-w-7xl mx-auto px-5 sm:px-8 lg:px-12;
   }
+
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-semibold text-sm transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex
+      items-center
+      justify-center
+      gap-2
+      rounded-xl
+      px-6
+      py-3
+      font-semibold
+      text-sm
+      transition-all
+      duration-200
+      active:scale-95
+      disabled:opacity-50
+      disabled:pointer-events-none;
+
+    min-width: 0;
   }
+
   .btn-primary {
-    @apply btn bg-orange-500 text-white shadow-lg shadow-orange-500/25 hover:bg-orange-600 hover:shadow-orange-500/40;
+    @apply btn
+      bg-orange-500
+      text-white
+      shadow-lg
+      shadow-orange-500/25
+      hover:bg-orange-600
+      hover:shadow-orange-500/40;
   }
+
   .btn-secondary {
-    @apply btn bg-navy-700 text-white hover:bg-navy-800;
+    @apply btn
+      bg-navy-700
+      text-white
+      hover:bg-navy-800;
   }
+
   .btn-outline {
-    @apply btn border-2 border-navy-700 text-navy-700 hover:bg-navy-700 hover:text-white;
+    @apply btn
+      border-2
+      border-navy-700
+      text-navy-700
+      hover:bg-navy-700
+      hover:text-white;
   }
+
   .btn-ghost {
-    @apply btn bg-white/10 text-white border border-white/30 hover:bg-white/20 backdrop-blur;
+    @apply btn
+      bg-white/10
+      text-white
+      border
+      border-white/30
+      hover:bg-white/20
+      backdrop-blur;
   }
+
   .card {
-    @apply bg-white rounded-2xl shadow-card border border-navy-100 transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1;
+    @apply bg-white
+      rounded-2xl
+      shadow-card
+      border
+      border-navy-100
+      transition-all
+      duration-300
+      hover:shadow-card-hover
+      hover:-translate-y-1;
+
+    min-width: 0;
+    max-width: 100%;
   }
+
   .section-label {
-    @apply inline-block text-orange-600 font-bold tracking-wider text-xs uppercase bg-orange-50 px-3 py-1 rounded-full;
+    @apply inline-block
+      text-orange-600
+      font-bold
+      tracking-wider
+      text-xs
+      uppercase
+      bg-orange-50
+      px-3
+      py-1
+      rounded-full;
   }
+
   .input-field {
-    @apply w-full rounded-xl border border-navy-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition;
+    @apply w-full
+      rounded-xl
+      border
+      border-navy-200
+      px-4
+      py-3
+      text-sm
+      focus:outline-none
+      focus:ring-2
+      focus:ring-orange-400
+      focus:border-transparent
+      transition;
+
+    min-width: 0;
+    max-width: 100%;
   }
+
   .label {
-    @apply block text-sm font-semibold text-navy-800 mb-1.5;
+    @apply block
+      text-sm
+      font-semibold
+      text-navy-800
+      mb-1.5;
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| REUSABLE TEXT HELPERS
+|--------------------------------------------------------------------------
+*/
+
+@layer utilities {
+  /*
+   * Use for names where one-line display
+   * looks cleaner.
+   */
+  .safe-truncate {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /*
+   * Use for emails / IDs where showing
+   * the complete value is important.
+   */
+  .safe-wrap {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    white-space: normal;
   }
 }

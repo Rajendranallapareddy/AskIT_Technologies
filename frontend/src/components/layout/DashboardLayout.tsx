@@ -73,10 +73,34 @@ export default function DashboardLayout({ children, links, title, pageTitle }: D
                   user ? initials(user.fullName) : '—'
                 )}
               </span>
-              <div className="hidden sm:block">
-                <p className="text-sm font-semibold text-navy-800 leading-tight">{user?.fullName}</p>
-                <p className="text-xs text-navy-400 leading-tight">{user?.role.replace('_', ' ')}</p>
-              </div>
+              <div className="hidden sm:block min-w-0 max-w-[180px]">
+  <p
+    title={user?.fullName || ''}
+    className="
+      text-sm
+      font-semibold
+      text-navy-800
+      leading-tight
+      truncate
+    "
+  >
+    {user?.fullName}
+  </p>
+
+  <p
+    className="
+      text-xs
+      text-navy-400
+      leading-tight
+      truncate
+    "
+  >
+    {user?.role.replace(
+      '_',
+      ' '
+    )}
+  </p>
+</div>
             </div>
             <button onClick={handleLogout} className="text-navy-400 hover:text-red-500" title="Logout">
               <LogOut className="w-5 h-5" />

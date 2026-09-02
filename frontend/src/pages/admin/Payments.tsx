@@ -181,12 +181,51 @@ export default function AdminPayments() {
     <DashboardLayout links={links} title="Admin Portal" pageTitle="Payments">
       <div className="h-[calc(100vh-110px)] overflow-y-auto overflow-x-hidden pr-1 pb-32">
         {analytics && (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-            <StatsCard icon={TrendingUp} label="Total Revenue" value={formatMoney(analytics.totalRevenue)} accent="green" />
-            <StatsCard icon={CheckCircle2} label="Successful" value={analytics.successCount} accent="navy" />
-            <StatsCard icon={ShieldCheck} label="Awaiting Approval" value={analytics.pendingApprovalCount ?? 0} accent="orange" />
-            <StatsCard icon={XCircle} label="Failed" value={analytics.failedCount} accent="red" />
-            <StatsCard icon={Clock} label="Pending" value={analytics.pendingCount} accent="orange" />
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4 mb-6">
+            <StatsCard icon={TrendingUp}
+  label="Total Revenue"
+  value={formatMoney(
+    analytics.totalRevenue
+  )}
+  accent="green"
+/>
+
+<StatsCard
+  icon={CheckCircle2}
+  label="Successful"
+  value={
+    analytics.successCount
+  }
+  accent="navy"
+/>
+
+<StatsCard
+  icon={ShieldCheck}
+  label="Awaiting Approval"
+  value={
+    analytics.pendingApprovalCount ??
+    0
+  }
+  accent="orange"
+/>
+
+<StatsCard
+  icon={XCircle}
+  label="Failed"
+  value={
+    analytics.failedCount
+  }
+  accent="red"
+/>
+
+<StatsCard
+  icon={Clock}
+  label="Pending"
+  value={
+    analytics.pendingCount
+  }
+  accent="orange"
+/>
           </div>
         )}
 
