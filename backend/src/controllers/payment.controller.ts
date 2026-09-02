@@ -36,6 +36,17 @@ export async function createOrder(req: AuthRequest, res: Response, next: NextFun
 
     const userId = req.user!.id;
 
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        mobileNumber: true,
+      },
+    });
+    if (!user) throw new AppError('User not found', 404);
+
     const internship = await prisma.internship.findUnique({ where: { id: internshipId } });
     if (!internship) throw new AppError('Internship not found', 404);
     if (internship.status !== 'OPEN') throw new AppError('Registrations are not open for this internship', 400);
@@ -54,6 +65,8 @@ export async function createOrder(req: AuthRequest, res: Response, next: NextFun
     let registration = await prisma.registration.findUnique({
       where: { userId_internshipId: { userId, internshipId } },
     });
+    const isNewRegistration = !registration;
+
     if (registration && !['AWAITING_PAYMENT', 'PENDING', 'CANCELLED', 'REJECTED'].includes(registration.status)) {
       throw new AppError('You already have an active registration for this internship', 409);
     }
@@ -175,6 +188,17 @@ export async function createOrder(req: AuthRequest, res: Response, next: NextFun
       });
     }
 
+    if (isNewRegistration) {
+      await notifyAdmins({
+        type: 'REGISTRATION',
+        title: 'New Course Registration',
+        message: `${user.fullName} registered for "${internship.title}".`,
+        link: '/admin/registrations',
+        push: true,
+        email: true,
+      });
+    }
+
     // Free internship — skip the gateway entirely, confirm immediately.
     if (pricing.isFree) {
       const settings = await getPaymentSettings();
@@ -187,13 +211,14 @@ export async function createOrder(req: AuthRequest, res: Response, next: NextFun
           decidedAt: settings.autoApproveOnPay ? new Date() : undefined,
         },
       });
-      await prisma.notification.create({
-        data: {
-          userId,
-          type: 'REGISTRATION',
-          title: 'Registration Confirmed',
-          message: `Your registration for "${internship.title}" is confirmed (no payment required).`,
-        },
+      await notifyUser({
+        userId,
+        type: 'REGISTRATION',
+        title: 'Registration Confirmed',
+        message: `Your registration for "${internship.title}" is confirmed (no payment required). Registration ID: ${regNo}.`,
+        link: '/my-internships',
+        push: true,
+        email: true,
       });
       return res.json({ success: true, data: { isFree: true, registrationId: registration.id, registrationNo: regNo } });
     }
@@ -352,16 +377,16 @@ export async function createOrder(req: AuthRequest, res: Response, next: NextFun
       },
     });
 
-    await prisma.notification.create({
-      data: {
-        userId,
-        type: 'REGISTRATION',
-        title: 'Registration Received — Payment Pending',
-        message:
-          `Your registration for "${internship.title}" is confirmed (${regNo}). Online payment isn't set up yet, ` +
-          `so ₹${firstInstallmentAmounts.totalAmount}${installmentPlanId ? ' (Installment 1)' : ''} is due — ` +
-          `ASK IT Technologies will contact you to collect it, or you can retry online payment later if it becomes available.`,
-      },
+    await notifyUser({
+      userId,
+      type: 'REGISTRATION',
+      title: 'Registration Received — Payment Pending',
+      message:
+        `Your registration for "${internship.title}" is confirmed (${regNo}). ` +
+        `₹${firstInstallmentAmounts.totalAmount}${installmentPlanId ? ' (Installment 1)' : ''} is pending payment.`,
+      link: '/payment-history',
+      push: true,
+      email: true,
     });
 
     await logActivity({
@@ -545,6 +570,7 @@ async function markInstallmentPendingApproval(payment: any, gatewayPaymentId: st
     title: 'Payment Submitted — Pending Approval',
     message: `Your payment of ₹${payment.totalAmount}${installmentLabel} for "${payment.internship.title}" was received and is pending Super Admin approval. You'll be notified once it's verified.`,
     link: '/payment-history',
+    push: true,
   });
 
   await notifyAdmins({
@@ -552,6 +578,8 @@ async function markInstallmentPendingApproval(payment: any, gatewayPaymentId: st
     title: 'Installment Payment Awaiting Approval',
     message: `${payment.user.fullName} paid ₹${payment.totalAmount}${installmentLabel} for "${payment.internship.title}" (${payment.paymentNo}). Review and approve from Admin → Payments.`,
     link: '/admin/payments',
+    push: true,
+    email: true,
   });
 
   await logActivity({
@@ -661,6 +689,18 @@ async function finalizePaymentSuccess(payment: any, gatewayPaymentId: string, ga
       ? `Your payment of ₹${payment.totalAmount}${installmentLabel} for "${payment.internship.title}" has been approved by the Super Admin and marked as Paid. Registration ID: ${regNo}.`
       : `Your payment of ₹${payment.totalAmount}${installmentLabel} for "${payment.internship.title}" was successful. Registration ID: ${regNo}.`,
     link: '/payment-history',
+    push: true,
+  });
+
+  await notifyAdmins({
+    type: 'PAYMENT',
+    title: approvedById ? 'Payment Approved' : 'Payment Successful',
+    message: approvedById
+      ? `${payment.user.fullName}'s payment of ₹${payment.totalAmount}${installmentLabel} for "${payment.internship.title}" was approved and marked as paid.`
+      : `${payment.user.fullName} completed a payment of ₹${payment.totalAmount}${installmentLabel} for "${payment.internship.title}".`,
+    link: '/admin/payments',
+    push: true,
+    email: true,
   });
 
   if (planJustCompleted) {
@@ -670,6 +710,7 @@ async function finalizePaymentSuccess(payment: any, gatewayPaymentId: string, ga
       title: 'All Installments Paid',
       message: `🎉 You've completed every installment for "${payment.internship.title}". Your payment plan is fully paid off — thank you!`,
       link: '/my-internships',
+      push: true,
     });
   }
 
@@ -1153,7 +1194,7 @@ export async function reportFailure(req: AuthRequest, res: Response, next: NextF
       title: 'Payment Failed',
       message: `Your payment attempt (${payment.paymentNo}) was not completed. You can retry anytime before the registration deadline.`,
       link: '/payment-history',
-      push: false,
+      push: true,
     });
 
     res.json({ success: true, message: 'Failure recorded. You can retry payment.' });
@@ -1433,7 +1474,10 @@ export async function verifyReceiptPublic(req: Request, res: Response, next: Nex
 export async function requestRefund(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { reason } = req.body;
-    const payment = await prisma.payment.findUnique({ where: { id: req.params.id } });
+    const payment = await prisma.payment.findUnique({
+      where: { id: req.params.id },
+      include: { user: true, internship: true },
+    });
     if (!payment || payment.userId !== req.user!.id) throw new AppError('Payment not found', 404);
     if (payment.status !== 'SUCCESS') throw new AppError('Only successful payments can be refunded', 400);
 
@@ -1451,6 +1495,24 @@ export async function requestRefund(req: AuthRequest, res: Response, next: NextF
         status: 'REQUESTED',
         requestedById: req.user!.id,
       },
+    });
+
+    await notifyAdmins({
+      type: 'PAYMENT',
+      title: 'New Refund Request',
+      message: `${payment.user.fullName} requested a refund of ₹${payment.totalAmount} for "${payment.internship.title}" (${payment.paymentNo}).`,
+      link: '/admin/refunds',
+      push: true,
+      email: true,
+    });
+
+    await notifyUser({
+      userId: payment.userId,
+      type: 'PAYMENT',
+      title: 'Refund Request Submitted',
+      message: `Your refund request of ₹${payment.totalAmount} for "${payment.internship.title}" has been submitted for review.`,
+      link: '/payment-history',
+      push: true,
     });
 
     res.status(201).json({ success: true, message: 'Refund request submitted for admin review', data: refund });
@@ -1733,6 +1795,7 @@ export async function submitPaymentReference(req: AuthRequest, res: Response, ne
       title: 'Payment Submitted — Pending Approval',
       message: `Your reference "${updated.studentReference}" for ₹${payment.totalAmount}${installmentLabel} ("${payment.internship.title}") was submitted and is pending Super Admin approval.`,
       link: '/payment-history',
+      push: true,
     });
 
     // Let admins with payment management access know a reference came in,
@@ -1742,6 +1805,8 @@ export async function submitPaymentReference(req: AuthRequest, res: Response, ne
       title: 'Payment Reference Submitted',
       message: `${payment.user.fullName} submitted reference "${updated.studentReference}" for ${payment.paymentNo}${installmentLabel} (₹${payment.totalAmount}, "${payment.internship.title}"). Review and approve from Admin → Payments.`,
       link: '/admin/payments',
+      push: true,
+      email: true,
     });
 
     res.json({ success: true, message: 'Thanks! Your payment reference was submitted and is pending approval by the Super Admin.', data: { paymentId: updated.id, studentReference: updated.studentReference, status: updated.status } });
@@ -1814,8 +1879,10 @@ export async function rejectPendingPayment(req: AuthRequest, res: Response, next
       userId: payment.userId,
       type: 'PAYMENT',
       title: 'Payment Rejected',
-      message: `Your payment of ₹${payment.totalAmount}${installmentLabel} for "${payment.internship.title}" was rejected: ${cleanReason}. Please retry payment or contact ASK IT Technologies.`,
+      message: `Your payment of ₹${payment.totalAmount}${installmentLabel} for "${payment.internship.title}" was rejected: ${cleanReason}. Please retry payment or contact AskIT Technologies.`,
       link: '/payment-history',
+      push: true,
+      email: true,
     });
 
     await logActivity({

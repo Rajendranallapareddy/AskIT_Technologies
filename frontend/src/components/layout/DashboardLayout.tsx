@@ -1,12 +1,38 @@
-import { ReactNode, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Menu, X, LogOut } from 'lucide-react';
-import Sidebar, { SidebarLink } from './Sidebar';
+import {
+  ReactNode,
+  useState,
+} from 'react';
+
+import {
+  Link,
+  useNavigate,
+} from 'react-router-dom';
+
+import {
+  Menu,
+  X,
+  LogOut,
+} from 'lucide-react';
+
+import Sidebar, {
+  SidebarLink,
+} from './Sidebar';
+
 import NotificationBell from './NotificationBell';
-import { useAuth } from '../../hooks/useAuth';
-import { initials } from '../../utils/formatters';
-import { useNavigate } from 'react-router-dom';
-import { getImageUrl } from '../../utils/imageUrl';
+
+import EnableNotifications from '../EnableNotifications';
+
+import {
+  useAuth,
+} from '../../hooks/useAuth';
+
+import {
+  initials,
+} from '../../utils/formatters';
+
+import {
+  getImageUrl,
+} from '../../utils/imageUrl';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -15,99 +41,271 @@ interface DashboardLayoutProps {
   pageTitle: string;
 }
 
-export default function DashboardLayout({ children, links, title, pageTitle }: DashboardLayoutProps) {
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
+export default function DashboardLayout({
+  children,
+  links,
+  title,
+  pageTitle,
+}: DashboardLayoutProps) {
+  const [
+    mobileNavOpen,
+    setMobileNavOpen,
+  ] = useState(false);
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/');
-  };
+  const {
+    user,
+    logout,
+  } = useAuth();
+
+  const navigate =
+    useNavigate();
+
+  const handleLogout =
+    async () => {
+      await logout();
+
+      navigate('/');
+    };
 
   return (
     <div className="flex min-h-screen bg-navy-50/50">
-      <Sidebar links={links} title={title} />
+      <Sidebar
+        links={links}
+        title={title}
+      />
 
+      {/* Mobile sidebar */}
       {mobileNavOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-navy-900/60" onClick={() => setMobileNavOpen(false)} />
-          <div className="absolute left-0 top-0 bottom-0 w-72 bg-navy-900">
+          <div
+            className="absolute inset-0 bg-navy-900/60"
+            onClick={() =>
+              setMobileNavOpen(
+                false
+              )
+            }
+          />
+
+          <div className="absolute bottom-0 left-0 top-0 w-72 bg-navy-900">
             <div className="flex justify-end p-4">
-              <button onClick={() => setMobileNavOpen(false)} className="text-white">
-                <X className="w-6 h-6" />
+              <button
+                type="button"
+                onClick={() =>
+                  setMobileNavOpen(
+                    false
+                  )
+                }
+                className="text-white"
+                aria-label="Close navigation"
+              >
+                <X className="h-6 w-6" />
               </button>
             </div>
+
             <div className="px-3">
-              {links.map((link) => (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  onClick={() => setMobileNavOpen(false)}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-navy-200 hover:bg-white/5"
-                >
-                  <link.icon className="w-4 h-4" />
-                  {link.label}
-                </Link>
-              ))}
+              {links.map(
+                (link) => (
+                  <Link
+                    key={
+                      link.to
+                    }
+                    to={
+                      link.to
+                    }
+                    onClick={() =>
+                      setMobileNavOpen(
+                        false
+                      )
+                    }
+                    className="
+                      flex
+                      items-center
+                      gap-3
+                      rounded-xl
+                      px-4
+                      py-3
+                      text-sm
+                      font-semibold
+                      text-navy-200
+                      transition
+                      hover:bg-white/5
+                    "
+                  >
+                    <link.icon className="h-4 w-4" />
+
+                    {
+                      link.label
+                    }
+                  </Link>
+                )
+              )}
             </div>
           </div>
         </div>
       )}
 
-      <div className="flex-1 min-w-0">
-        <header className="sticky top-0 z-30 bg-white border-b border-navy-100 px-5 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button className="lg:hidden text-navy-700" onClick={() => setMobileNavOpen(true)}>
-              <Menu className="w-6 h-6" />
+      {/* Main dashboard area */}
+      <div className="min-w-0 flex-1">
+        <header
+          className="
+            sticky
+            top-0
+            z-30
+            flex
+            h-16
+            items-center
+            justify-between
+            border-b
+            border-navy-100
+            bg-white
+            px-5
+            lg:px-8
+          "
+        >
+          {/* Left side */}
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              className="shrink-0 text-navy-700 lg:hidden"
+              onClick={() =>
+                setMobileNavOpen(
+                  true
+                )
+              }
+              aria-label="Open navigation"
+            >
+              <Menu className="h-6 w-6" />
             </button>
-            <h1 className="font-bold text-lg text-navy-900">{pageTitle}</h1>
+
+            <h1
+              className="
+                min-w-0
+                truncate
+                text-lg
+                font-bold
+                text-navy-900
+              "
+              title={
+                pageTitle
+              }
+            >
+              {
+                pageTitle
+              }
+            </h1>
           </div>
-          <div className="flex items-center gap-4">
+
+          {/* Right side */}
+          <div className="flex shrink-0 items-center gap-3 sm:gap-4">
             <NotificationBell />
-            <div className="flex items-center gap-2">
-              <span className="w-9 h-9 rounded-full bg-navy-700 text-white text-xs font-bold flex items-center justify-center overflow-hidden shrink-0">
+
+            <div className="flex min-w-0 items-center gap-2">
+              <span
+                className="
+                  flex
+                  h-9
+                  w-9
+                  shrink-0
+                  items-center
+                  justify-center
+                  overflow-hidden
+                  rounded-full
+                  bg-navy-700
+                  text-xs
+                  font-bold
+                  text-white
+                "
+              >
                 {user?.profilePicture ? (
-                  <img src={getImageUrl(user.profilePicture) ?? undefined} alt={user.fullName} className="w-full h-full object-cover"/>
+                  <img
+                    src={
+                      getImageUrl(
+                        user.profilePicture
+                      ) ??
+                      undefined
+                    }
+                    alt={
+                      user.fullName
+                    }
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
-                  user ? initials(user.fullName) : '—'
+                  user
+                    ? initials(
+                        user.fullName
+                      )
+                    : '—'
                 )}
               </span>
-              <div className="hidden sm:block min-w-0 max-w-[180px]">
-  <p
-    title={user?.fullName || ''}
-    className="
-      text-sm
-      font-semibold
-      text-navy-800
-      leading-tight
-      truncate
-    "
-  >
-    {user?.fullName}
-  </p>
 
-  <p
-    className="
-      text-xs
-      text-navy-400
-      leading-tight
-      truncate
-    "
-  >
-    {user?.role.replace(
-      '_',
-      ' '
-    )}
-  </p>
-</div>
+              <div className="hidden min-w-0 max-w-[180px] sm:block">
+                <p
+                  title={
+                    user?.fullName ||
+                    ''
+                  }
+                  className="
+                    truncate
+                    text-sm
+                    font-semibold
+                    leading-tight
+                    text-navy-800
+                  "
+                >
+                  {
+                    user?.fullName
+                  }
+                </p>
+
+                <p
+                  className="
+                    truncate
+                    text-xs
+                    leading-tight
+                    text-navy-400
+                  "
+                >
+                  {
+                    user?.role
+                      ?.replace(
+                        /_/g,
+                        ' '
+                      )
+                  }
+                </p>
+              </div>
             </div>
-            <button onClick={handleLogout} className="text-navy-400 hover:text-red-500" title="Logout">
-              <LogOut className="w-5 h-5" />
+
+            <button
+              type="button"
+              onClick={
+                handleLogout
+              }
+              className="
+                shrink-0
+                text-navy-400
+                transition
+                hover:text-red-500
+              "
+              title="Logout"
+              aria-label="Logout"
+            >
+              <LogOut className="h-5 w-5" />
             </button>
           </div>
         </header>
-        <main className="p-5 lg:p-8">{children}</main>
+
+        <main className="p-5 lg:p-8">
+          {/* Mobile / Browser Push Notifications */}
+          <div className="mb-5">
+            <EnableNotifications />
+          </div>
+
+          {/* Current dashboard page */}
+          {
+            children
+          }
+        </main>
       </div>
     </div>
   );

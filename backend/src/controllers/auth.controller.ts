@@ -29,6 +29,11 @@ import {
   deleteCloudFile,
 } from '../services/cloudStorage.service';
 
+import {
+  notifyAdmins,
+  notifyUser,
+} from '../services/notify.service';
+
 const isProd = process.env.NODE_ENV === 'production';
 
 const cookieOpts = {
@@ -260,6 +265,53 @@ export async function register(
       );
     });
 
+    /**
+     * Notify Super Admin + active Sub Admins about the new registration.
+     * Notification delivery is best-effort and must not block registration.
+     */
+    void notifyAdmins({
+      type: 'REGISTRATION',
+      title: 'New Student Registered',
+      message:
+        `${user.fullName} created a new AskIT Technologies account. ` +
+        `Email: ${user.email}${
+          user.mobileNumber
+            ? ` | Mobile: ${user.mobileNumber}`
+            : ''
+        }`,
+      link: '/admin/users/students',
+      push: true,
+      email: true,
+      whatsapp: false,
+    }).catch((error) => {
+      console.error(
+        '[REGISTER] Admin notification error:',
+        error
+      );
+    });
+
+    /**
+     * Store a welcome notification for the new student.
+     * Push will also be attempted if this user already has a valid device
+     * subscription; otherwise the in-app notification remains available.
+     */
+    void notifyUser({
+      userId: user.id,
+      type: 'REGISTRATION',
+      title: 'Welcome to AskIT Technologies',
+      message:
+        'Your AskIT Technologies account has been created successfully.',
+      link: '/dashboard',
+      push: true,
+      email: false,
+      whatsapp: false,
+    }).catch((error) => {
+      console.error(
+        '[REGISTER] Student notification error:',
+        error
+      );
+    });
+
     return res.status(201).json({
       success: true,
 
@@ -272,6 +324,7 @@ export async function register(
     next(err);
   }
 }
+
 
 /**
  * POST /api/auth/verify-email

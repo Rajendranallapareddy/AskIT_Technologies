@@ -45,8 +45,8 @@ enum InternshipStatus {
 }
 
 enum RegistrationStatus {
-  AWAITING_PAYMENT // created, payment not yet completed (paid internships only)
-  PENDING // payment complete (or free internship) - awaiting admin approval
+  AWAITING_PAYMENT
+  PENDING
   APPROVED
   REJECTED
   CANCELLED
@@ -73,7 +73,7 @@ enum NotificationType {
   ANNOUNCEMENT
   CERTIFICATE
   SYSTEM
-  PAYMENT // installment reminders, due/overdue, submitted, approved/rejected, completion
+  PAYMENT
 }
 
 enum ContactStatus {
@@ -83,12 +83,12 @@ enum ContactStatus {
 }
 
 enum PaymentStatus {
-  PENDING // order created, awaiting user action at the gateway
-  PROCESSING // gateway callback received, verifying
-  PENDING_APPROVAL // student has paid/submitted proof of payment; awaiting Super Admin verification before being credited
+  PENDING
+  PROCESSING
+  PENDING_APPROVAL
   SUCCESS
   FAILED
-  CANCELLED // user abandoned checkout
+  CANCELLED
   REFUNDED
   PARTIALLY_REFUNDED
 }
@@ -136,8 +136,8 @@ enum PaymentAccountType {
 }
 
 enum InstallmentPlanStatus {
-  ACTIVE // one or more installments still unpaid
-  COMPLETED // every installment paid in full
+  ACTIVE
+  COMPLETED
   CANCELLED
 }
 
@@ -146,81 +146,78 @@ enum InstallmentPlanStatus {
 // ---------------------------------------------------------------------------
 
 model User {
-  id                String    @id @default(uuid())
-  fullName          String
-  email             String    @unique
-  mobileNumber      String    @unique
-  passwordHash      String
-  role              Role      @default(USER)
-  isActive          Boolean   @default(true)
-  isEmailVerified   Boolean   @default(false)
-  emailVerifyToken  String?
-  resetToken        String?
-  resetTokenExpiry  DateTime?
+  id               String    @id @default(uuid())
+  fullName         String
+  email            String    @unique
+  mobileNumber     String    @unique
+  passwordHash     String
+  role             Role      @default(USER)
+  isActive         Boolean   @default(true)
+  isEmailVerified  Boolean   @default(false)
+  emailVerifyToken String?
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  isProtected      Boolean   @default(false)
 
-  // Protects the single permanent Super Admin account
-  isProtected       Boolean   @default(false)
+  gender         Gender?
+  dateOfBirth    DateTime?
+  collegeName    String?
+  university     String?
+  degree         String?
+  branch         String?
+  graduationYear Int?
+  address        String?
+  city           String?
+  state          String?
+  country        String?
+  profilePicture String?
 
-  gender            Gender?
-  dateOfBirth       DateTime?
-  collegeName       String?
-  university        String?
-  degree            String?
-  branch            String?
-  graduationYear    Int?
-  address           String?
-  city              String?
-  state             String?
-  country           String?
-  profilePicture    String?
+  lastLoginAt DateTime?
+  lastLoginIp String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  lastLoginAt       DateTime?
-  lastLoginIp       String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-
-  // Relations
   trainerProfile       Trainer?
-  registrations         Registration[]
-  attendanceRecords      Attendance[]
-  certificates          Certificate[]
-  notifications         Notification[]
-  activityLogs           ActivityLog[]        @relation("ActorLogs")
-  subAdminPermissions   SubAdminPermission?
-  internshipsCreated    Internship[]         @relation("InternshipCreatedBy")
-  announcementsCreated  Announcement[]       @relation("AnnouncementCreatedBy")
-  payments              Payment[]
-  paymentsApproved      Payment[]            @relation("PaymentApprovedBy")
-  refundsDecided        Refund[]             @relation("RefundDecidedBy")
-  paymentAccountsAdded  PaymentAccount[]     @relation("PaymentAccountCreatedBy")
-  pushSubscriptions     PushSubscription[]
+  registrations        Registration[]
+  attendanceRecords    Attendance[]
+  certificates         Certificate[]
+  notifications        Notification[]
+  activityLogs         ActivityLog[]       @relation("ActorLogs")
+  subAdminPermissions  SubAdminPermission?
+  internshipsCreated   Internship[]        @relation("InternshipCreatedBy")
+  announcementsCreated Announcement[]      @relation("AnnouncementCreatedBy")
+  payments             Payment[]
+  paymentsApproved     Payment[]           @relation("PaymentApprovedBy")
+  refundsDecided       Refund[]            @relation("RefundDecidedBy")
+  paymentAccountsAdded PaymentAccount[]    @relation("PaymentAccountCreatedBy")
+  pushSubscriptions    PushSubscription[]
 
   @@index([role])
   @@index([email])
 }
 
 model SubAdminPermission {
-  id                     String   @id @default(uuid())
-  userId                 String   @unique
-  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  manageUsers            Boolean  @default(false)
-  manageTrainers         Boolean  @default(false)
-  manageCourses          Boolean  @default(false)
-  manageInternships      Boolean  @default(false)
-  manageRegistrations    Boolean  @default(false)
-  manageAttendance       Boolean  @default(false)
-  manageCertificates     Boolean  @default(false)
-  manageAnnouncements    Boolean  @default(false)
-  manageGallery          Boolean  @default(false)
-  manageContactRequests  Boolean  @default(false)
-  manageReports          Boolean  @default(false)
-  viewAnalytics          Boolean  @default(false)
-  managePayments         Boolean  @default(false)
-  manageRefunds          Boolean  @default(false)
-  manageCoupons          Boolean  @default(false)
+  manageUsers           Boolean @default(false)
+  manageTrainers        Boolean @default(false)
+  manageCourses         Boolean @default(false)
+  manageInternships     Boolean @default(false)
+  manageRegistrations   Boolean @default(false)
+  manageAttendance      Boolean @default(false)
+  manageCertificates    Boolean @default(false)
+  manageAnnouncements   Boolean @default(false)
+  manageGallery         Boolean @default(false)
+  manageContactRequests Boolean @default(false)
+  manageReports         Boolean @default(false)
+  viewAnalytics         Boolean @default(false)
+  managePayments        Boolean @default(false)
+  manageRefunds         Boolean @default(false)
+  manageCoupons         Boolean @default(false)
 
-  updatedAt              DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -228,21 +225,21 @@ model SubAdminPermission {
 // ---------------------------------------------------------------------------
 
 model Trainer {
-  id             String   @id @default(uuid())
-  userId         String   @unique
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  photo          String?
-  expertise      String[]
-  experienceYears Int     @default(0)
-  bio            String?  @db.Text
-  availability   String?
+  photo           String?
+  expertise       String[]
+  experienceYears Int      @default(0)
+  bio             String?  @db.Text
+  availability    String?
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  internships    Internship[]
-  materials      Material[]
+  internships Internship[]
+  materials   Material[]
 
   @@index([userId])
 }
@@ -252,58 +249,57 @@ model Trainer {
 // ---------------------------------------------------------------------------
 
 model Course {
-  id           String   @id @default(uuid())
-  title        String
-  slug         String   @unique
-  category     String
-  image        String?
-  description  String   @db.Text
-  duration     String
-  syllabus     String[]
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id          String   @id @default(uuid())
+  title       String
+  slug        String   @unique
+  category    String
+  image       String?
+  description String   @db.Text
+  duration    String
+  syllabus    String[]
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  internships  Internship[]
+  internships Internship[]
 }
 
 model Internship {
-  id                    String            @id @default(uuid())
-  title                 String
-  slug                  String            @unique
-  description           String            @db.Text
-  courseId              String?
-  course                Course?           @relation(fields: [courseId], references: [id])
+  id          String  @id @default(uuid())
+  title       String
+  slug        String  @unique
+  description String  @db.Text
+  courseId    String?
+  course      Course? @relation(fields: [courseId], references: [id])
 
-  trainerId             String?
-  trainer               Trainer?          @relation(fields: [trainerId], references: [id])
+  trainerId String?
+  trainer   Trainer? @relation(fields: [trainerId], references: [id])
 
-  duration              String
-  startDate             DateTime
-  endDate               DateTime
-  registrationDeadline  DateTime
-  totalSeats            Int
-  seatsFilled           Int               @default(0)
-  mode                  InternshipMode    @default(ONLINE)
-  status                InternshipStatus  @default(DRAFT)
+  duration             String
+  startDate            DateTime
+  endDate              DateTime
+  registrationDeadline DateTime
+  totalSeats           Int
+  seatsFilled          Int              @default(0)
+  mode                 InternshipMode   @default(ONLINE)
+  status               InternshipStatus @default(DRAFT)
 
-  // --- Pricing (all amounts server-authoritative; never trust client) ---
-  fee                   Decimal?          @db.Decimal(10, 2) // base fee; null/0 = free
-  earlyBirdFee          Decimal?          @db.Decimal(10, 2)
-  earlyBirdDeadline     DateTime?
-  gstPercentage         Decimal           @default(0) @db.Decimal(5, 2)
+  fee               Decimal?  @db.Decimal(10, 2)
+  earlyBirdFee      Decimal?  @db.Decimal(10, 2)
+  earlyBirdDeadline DateTime?
+  gstPercentage     Decimal   @default(0) @db.Decimal(5, 2)
 
-  createdById           String?
-  createdBy             User?             @relation("InternshipCreatedBy", fields: [createdById], references: [id])
-  createdAt             DateTime          @default(now())
-  updatedAt              DateTime          @updatedAt
+  createdById String?
+  createdBy   User?    @relation("InternshipCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  registrations          Registration[]
-  attendanceSessions      AttendanceSession[]
-  certificates           Certificate[]
-  announcements           Announcement[]
-  materials               Material[]
-  payments                Payment[]
+  registrations      Registration[]
+  attendanceSessions AttendanceSession[]
+  certificates       Certificate[]
+  announcements      Announcement[]
+  materials          Material[]
+  payments           Payment[]
 
   @@index([status])
   @@index([slug])
@@ -314,48 +310,44 @@ model Internship {
 // ---------------------------------------------------------------------------
 
 model Registration {
-  id               String              @id @default(uuid())
-  registrationNo   String?             @unique // e.g. ASKIT-REG-2026-000123, assigned once payment/registration is confirmed
-  userId           String
-  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  internshipId     String
-  internship       Internship          @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  id             String     @id @default(uuid())
+  registrationNo String?    @unique
+  userId         String
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  internshipId   String
+  internship     Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
 
-  status           RegistrationStatus  @default(PENDING)
-  requiresPayment  Boolean             @default(false)
-  appliedAt        DateTime            @default(now())
-  decidedAt        DateTime?
-  cancelledAt      DateTime?
-  completedAt      DateTime?
+  status          RegistrationStatus @default(PENDING)
+  requiresPayment Boolean            @default(false)
+  appliedAt       DateTime           @default(now())
+  decidedAt       DateTime?
+  cancelledAt     DateTime?
+  completedAt     DateTime?
 
-  payments         Payment[]
-  installmentPlan  InstallmentPlan?
+  payments        Payment[]
+  installmentPlan InstallmentPlan?
 
   @@unique([userId, internshipId])
   @@index([status])
 }
 
 // ---------------------------------------------------------------------------
-// INSTALLMENT PLANS — lets a student split one internship's fee across
-// several Payment rows instead of paying the whole amount up front. The
-// registration is confirmed as soon as the plan is created (or the first
-// installment is paid, if that is required); remaining installments are
-// tracked here and collected later — either online (once a gateway is
-// configured) or offline by an admin.
+// INSTALLMENT PLANS
 // ---------------------------------------------------------------------------
+
 model InstallmentPlan {
-  id                   String                @id @default(uuid())
-  registrationId       String                @unique
-  registration         Registration          @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  id             String       @id @default(uuid())
+  registrationId String       @unique
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
 
   totalAmount          Decimal               @db.Decimal(10, 2)
   numberOfInstallments Int
   status               InstallmentPlanStatus @default(ACTIVE)
 
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  payments             Payment[]
+  payments Payment[]
 
   @@index([status])
 }
@@ -365,30 +357,30 @@ model InstallmentPlan {
 // ---------------------------------------------------------------------------
 
 model AttendanceSession {
-  id            String       @id @default(uuid())
+  id            String     @id @default(uuid())
   internshipId  String
-  internship    Internship   @relation(fields: [internshipId], references: [id], onDelete: Cascade)
-  date          DateTime     // full date + time of the session
+  internship    Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  date          DateTime
   topic         String?
   zoomLink      String?
   zoomMeetingId String?
   zoomPasscode  String?
-  createdAt     DateTime     @default(now())
+  createdAt     DateTime   @default(now())
 
-  records       Attendance[]
+  records Attendance[]
 
   @@unique([internshipId, date])
 }
 
 model Attendance {
-  id           String             @id @default(uuid())
-  sessionId    String
-  session      AttendanceSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  userId       String
-  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status       AttendanceStatus   @default(ABSENT)
-  markedAt     DateTime           @default(now())
-  markedBy     String?
+  id        String            @id @default(uuid())
+  sessionId String
+  session   AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    AttendanceStatus  @default(ABSENT)
+  markedAt  DateTime          @default(now())
+  markedBy  String?
 
   @@unique([sessionId, userId])
   @@index([userId])
@@ -399,19 +391,19 @@ model Attendance {
 // ---------------------------------------------------------------------------
 
 model Certificate {
-  id              String            @id @default(uuid())
-  certificateNo   String            @unique
-  userId          String
-  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  internshipId    String
-  internship      Internship        @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  id            String     @id @default(uuid())
+  certificateNo String     @unique
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  internshipId  String
+  internship    Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
 
-  status          CertificateStatus @default(PENDING)
-  issuedAt        DateTime?
-  fileUrl         String?
+  status   CertificateStatus @default(PENDING)
+  issuedAt DateTime?
+  fileUrl  String?
 
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([certificateNo])
 }
@@ -421,58 +413,54 @@ model Certificate {
 // ---------------------------------------------------------------------------
 
 model Announcement {
-  id            String       @id @default(uuid())
-  title         String
-  message       String       @db.Text
-  internshipId  String?
-  internship    Internship?  @relation(fields: [internshipId], references: [id], onDelete: Cascade)
-  createdById   String?
-  createdBy     User?        @relation("AnnouncementCreatedBy", fields: [createdById], references: [id])
-  isGlobal      Boolean      @default(false)
-  createdAt     DateTime     @default(now())
+  id           String      @id @default(uuid())
+  title        String
+  message      String      @db.Text
+  internshipId String?
+  internship   Internship? @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  createdById  String?
+  createdBy    User?       @relation("AnnouncementCreatedBy", fields: [createdById], references: [id])
+  isGlobal     Boolean     @default(false)
+  createdAt    DateTime    @default(now())
 }
 
 model Material {
-  id            String      @id @default(uuid())
-  internshipId  String
-  internship    Internship  @relation(fields: [internshipId], references: [id], onDelete: Cascade)
-  trainerId     String?
-  trainer       Trainer?    @relation(fields: [trainerId], references: [id])
-  title         String
-  fileUrl       String
-  createdAt     DateTime    @default(now())
+  id           String     @id @default(uuid())
+  internshipId String
+  internship   Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  trainerId    String?
+  trainer      Trainer?   @relation(fields: [trainerId], references: [id])
+  title        String
+  fileUrl      String
+  createdAt    DateTime   @default(now())
 }
 
 model Notification {
-  id         String            @id @default(uuid())
-  userId     String
-  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type       NotificationType
-  title      String
-  message    String
-  // Optional frontend route (e.g. "/payment-history", "/my-internships")
-  // opened when the notification is clicked from the bell dropdown.
-  link       String?
-  isRead     Boolean           @default(false)
-  createdAt  DateTime          @default(now())
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
 
   @@index([userId, isRead])
 }
 
 // ---------------------------------------------------------------------------
-// WEB PUSH — lets students/staff opt in to receive installment reminders,
-// payment/approval updates, and announcements as OS-level push
-// notifications even when the site isn't open in a tab. One row per
-// browser/device subscription (a user can have several).
+// WEB PUSH
 // ---------------------------------------------------------------------------
+
 model PushSubscription {
-  id         String   @id @default(uuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  endpoint   String   @unique
-  p256dh     String
-  auth       String
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
 
   @@index([userId])
 }
@@ -482,33 +470,33 @@ model PushSubscription {
 // ---------------------------------------------------------------------------
 
 model Testimonial {
-  id         String   @id @default(uuid())
-  name       String
-  role       String?
-  photo      String?
-  rating     Int      @default(5)
-  review     String   @db.Text
-  isPublished Boolean @default(true)
-  createdAt  DateTime @default(now())
+  id          String   @id @default(uuid())
+  name        String
+  role        String?
+  photo       String?
+  rating      Int      @default(5)
+  review      String   @db.Text
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
 }
 
 model GalleryImage {
-  id         String   @id @default(uuid())
-  imageUrl   String
-  caption    String?
-  category   String?
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  imageUrl  String
+  caption   String?
+  category  String?
+  createdAt DateTime @default(now())
 }
 
 model ContactRequest {
-  id         String        @id @default(uuid())
-  name       String
-  email      String
-  phone      String?
-  subject    String?
-  message    String        @db.Text
-  status     ContactStatus @default(NEW)
-  createdAt  DateTime      @default(now())
+  id        String        @id @default(uuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String?
+  message   String        @db.Text
+  status    ContactStatus @default(NEW)
+  createdAt DateTime      @default(now())
 }
 
 // ---------------------------------------------------------------------------
@@ -516,64 +504,53 @@ model ContactRequest {
 // ---------------------------------------------------------------------------
 
 model Payment {
-  id                String          @id @default(uuid())
-  paymentNo         String          @unique // human-friendly, e.g. ASKIT-PAY-2026-000123
-  idempotencyKey    String          @unique // client-supplied per checkout attempt; blocks duplicate order creation
+  id             String @id @default(uuid())
+  paymentNo      String @unique
+  idempotencyKey String @unique
 
-  userId            String
-  user              User            @relation(fields: [userId], references: [id])
-  internshipId      String
-  internship        Internship      @relation(fields: [internshipId], references: [id])
-  registrationId    String?
-  registration      Registration?   @relation(fields: [registrationId], references: [id])
-  couponId          String?
-  coupon            Coupon?         @relation(fields: [couponId], references: [id])
+  userId         String
+  user           User          @relation(fields: [userId], references: [id])
+  internshipId   String
+  internship     Internship    @relation(fields: [internshipId], references: [id])
+  registrationId String?
+  registration   Registration? @relation(fields: [registrationId], references: [id])
+  couponId       String?
+  coupon         Coupon?       @relation(fields: [couponId], references: [id])
 
-  // --- Installment plan linkage (all nullable — most payments are a
-  // one-time, full-amount payment and don't belong to a plan) ---
   installmentPlanId String?
   installmentPlan   InstallmentPlan? @relation(fields: [installmentPlanId], references: [id])
-  installmentIndex  Int?            // 1-based position within the plan (1 = first installment)
-  dueDate           DateTime?       // when this installment is due; null for non-installment payments
+  installmentIndex  Int?
+  dueDate           DateTime?
 
-  // --- Server-computed amounts (never accept these from the client) ---
-  baseAmount        Decimal         @db.Decimal(10, 2)
-  discountAmount     Decimal        @default(0) @db.Decimal(10, 2)
-  taxAmount          Decimal        @default(0) @db.Decimal(10, 2)
-  totalAmount         Decimal       @db.Decimal(10, 2)
-  currency          String          @default("INR")
+  baseAmount     Decimal @db.Decimal(10, 2)
+  discountAmount Decimal @default(0) @db.Decimal(10, 2)
+  taxAmount      Decimal @default(0) @db.Decimal(10, 2)
+  totalAmount    Decimal @db.Decimal(10, 2)
+  currency       String  @default("INR")
 
-  status            PaymentStatus   @default(PENDING)
-  method            PaymentMethod?
-  gateway           PaymentGateway  @default(RAZORPAY)
+  status  PaymentStatus  @default(PENDING)
+  method  PaymentMethod?
+  gateway PaymentGateway @default(RAZORPAY)
 
-  gatewayOrderId    String?         @unique
-  gatewayPaymentId  String?         @unique // set only once, on verified success - prevents replay reuse
-  gatewaySignature  String?
-  failureReason     String?
-  // What the student says they paid a MANUAL (UPI/bank transfer) payment
-  // with — a UTR / UPI reference number, submitted from the "Pay via
-  // UPI / Bank Transfer" screen so an admin can cross-check it against
-  // their bank/UPI statement before marking the payment as received.
-  studentReference  String?
+  gatewayOrderId   String? @unique
+  gatewayPaymentId String? @unique
+  gatewaySignature String?
+  failureReason    String?
+  studentReference String?
 
-  // --- Super Admin approval trail (PENDING_APPROVAL -> SUCCESS/FAILED) ---
-  approvedById      String?
-  approvedBy        User?           @relation("PaymentApprovedBy", fields: [approvedById], references: [id])
-  approvedAt        DateTime?
-  rejectionReason   String?
+  approvedById    String?
+  approvedBy      User?     @relation("PaymentApprovedBy", fields: [approvedById], references: [id])
+  approvedAt      DateTime?
+  rejectionReason String?
 
-  // Set whenever an upcoming/due/overdue reminder notification was last
-  // sent for this payment, so the reminder sweep never emails/pushes the
-  // same reminder more than once in a day.
   lastReminderSentAt DateTime?
 
-  paidAt            DateTime?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  receipt           Receipt?
-  refunds           Refund[]
+  receipt Receipt?
+  refunds Refund[]
 
   @@index([userId])
   @@index([internshipId])
@@ -583,101 +560,98 @@ model Payment {
 }
 
 model Receipt {
-  id              String    @id @default(uuid())
-  receiptNo       String    @unique // e.g. ASKIT-RCPT-2026-000123
-  paymentId       String    @unique
-  payment         Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  id        String  @id @default(uuid())
+  receiptNo String  @unique
+  paymentId String  @unique
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
-  verifyToken     String    @unique // long random token embedded in the QR code for public verification
-  fileUrl         String?
-  emailedAt       DateTime?
-  verifiedCount   Int       @default(0)
+  verifyToken   String    @unique
+  fileUrl       String?
+  emailedAt     DateTime?
+  verifiedCount Int       @default(0)
 
-  createdAt       DateTime  @default(now())
+  createdAt DateTime @default(now())
 }
 
 model Refund {
-  id              String        @id @default(uuid())
-  refundNo        String        @unique // e.g. ASKIT-RFND-2026-000123
-  paymentId       String
-  payment         Payment       @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  id        String  @id @default(uuid())
+  refundNo  String  @unique
+  paymentId String
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
-  amount          Decimal       @db.Decimal(10, 2)
-  type            RefundType    @default(FULL)
-  reason          String        @db.Text
-  status          RefundStatus  @default(REQUESTED)
+  amount Decimal      @db.Decimal(10, 2)
+  type   RefundType   @default(FULL)
+  reason String       @db.Text
+  status RefundStatus @default(REQUESTED)
 
   requestedById   String?
   decidedById     String?
-  decidedBy       User?         @relation("RefundDecidedBy", fields: [decidedById], references: [id])
+  decidedBy       User?     @relation("RefundDecidedBy", fields: [decidedById], references: [id])
   decidedAt       DateTime?
   gatewayRefundId String?
 
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status])
   @@index([paymentId])
 }
 
 model PaymentAccount {
-  id                String              @id @default(uuid())
-  type              PaymentAccountType
-  label             String // display name, e.g. "Primary UPI", "HDFC Current Account"
-  isActive          Boolean             @default(true)
+  id       String             @id @default(uuid())
+  type     PaymentAccountType
+  label    String
+  isActive Boolean            @default(true)
 
-  // UPI
-  upiId             String?
-  qrCodeUrl         String?
+  upiId     String?
+  qrCodeUrl String?
 
-  // Bank account
-  accountHolderName String?
-  accountNumberMasked String? // only last 4 digits stored in plaintext for display
-  accountNumberEnc  String? // AES-256-GCM encrypted full account number
-  ifsc              String?
-  branch            String?
+  accountHolderName   String?
+  accountNumberMasked String?
+  accountNumberEnc    String?
+  ifsc                String?
+  branch              String?
 
-  // Gateway credentials (encrypted at rest; secret never sent to the frontend)
-  gatewayName       PaymentGateway?
-  merchantId        String?
-  gatewayKeyId      String?
+  gatewayName         PaymentGateway?
+  merchantId          String?
+  gatewayKeyId        String?
   gatewayKeySecretEnc String?
 
-  createdById       String?
-  createdBy         User?               @relation("PaymentAccountCreatedBy", fields: [createdById], references: [id])
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  createdById String?
+  createdBy   User?    @relation("PaymentAccountCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model PaymentSettings {
-  id                String   @id @default("singleton") // enforced single-row settings table
-  gstPercentage     Decimal  @default(0) @db.Decimal(5, 2)
-  currency          String   @default("INR")
-  activeGateway     PaymentGateway @default(RAZORPAY)
-  allowedMethods    String[] @default(["UPI", "CARD", "NETBANKING", "WALLET"])
-  autoApproveOnPay  Boolean  @default(false) // if true, registration auto-APPROVED on payment success instead of PENDING
-  updatedAt         DateTime @updatedAt
+  id               String         @id @default("singleton")
+  gstPercentage    Decimal        @default(0) @db.Decimal(5, 2)
+  currency         String         @default("INR")
+  activeGateway    PaymentGateway @default(RAZORPAY)
+  allowedMethods   String[]       @default(["UPI", "CARD", "NETBANKING", "WALLET"])
+  autoApproveOnPay Boolean        @default(false)
+  updatedAt        DateTime       @updatedAt
 }
 
 model Coupon {
-  id                    String        @id @default(uuid())
-  code                  String        @unique
-  description           String?
-  discountType          DiscountType  @default(PERCENTAGE)
-  discountValue         Decimal       @db.Decimal(10, 2)
-  maxDiscountAmount     Decimal?      @db.Decimal(10, 2)
-  minOrderAmount        Decimal?      @db.Decimal(10, 2)
-  usageLimit            Int?
-  usedCount             Int           @default(0)
-  validFrom             DateTime?
-  validUntil            DateTime?
-  isActive              Boolean       @default(true)
-  applicableInternshipIds String[]    @default([]) // empty = applies to all internships
+  id                      String       @id @default(uuid())
+  code                    String       @unique
+  description             String?
+  discountType            DiscountType @default(PERCENTAGE)
+  discountValue           Decimal      @db.Decimal(10, 2)
+  maxDiscountAmount       Decimal?     @db.Decimal(10, 2)
+  minOrderAmount          Decimal?     @db.Decimal(10, 2)
+  usageLimit              Int?
+  usedCount               Int          @default(0)
+  validFrom               DateTime?
+  validUntil              DateTime?
+  isActive                Boolean      @default(true)
+  applicableInternshipIds String[]     @default([])
 
-  createdAt             DateTime      @default(now())
-  updatedAt              DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  payments              Payment[]
+  payments Payment[]
 }
 
 // ---------------------------------------------------------------------------
@@ -685,15 +659,15 @@ model Coupon {
 // ---------------------------------------------------------------------------
 
 model ActivityLog {
-  id             String   @id @default(uuid())
-  actorId        String?
-  actor          User?    @relation("ActorLogs", fields: [actorId], references: [id], onDelete: SetNull)
-  action         String
-  description    String
-  previousValue  Json?
-  newValue       Json?
-  ipAddress      String?
-  createdAt      DateTime @default(now())
+  id            String   @id @default(uuid())
+  actorId       String?
+  actor         User?    @relation("ActorLogs", fields: [actorId], references: [id], onDelete: SetNull)
+  action        String
+  description   String
+  previousValue Json?
+  newValue      Json?
+  ipAddress     String?
+  createdAt     DateTime @default(now())
 
   @@index([actorId])
   @@index([action])

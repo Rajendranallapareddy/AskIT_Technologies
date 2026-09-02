@@ -1,4 +1,5 @@
 import 'dotenv/config';
+
 import express from 'express';
 import http from 'http';
 import cors from 'cors';
@@ -6,18 +7,42 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import path from 'path';
+
 import routes from './routes';
-import { errorHandler, notFoundHandler } from './middleware/error.middleware';
-import { apiRateLimiter } from './middleware/rateLimit.middleware';
-import { handleWebhook } from './controllers/payment.controller';
-import { initRealtime } from './services/realtime.service';
-import { runInstallmentReminderSweep } from './services/reminder.service';
+
+import {
+  errorHandler,
+  notFoundHandler,
+} from './middleware/error.middleware';
+
+import {
+  apiRateLimiter,
+} from './middleware/rateLimit.middleware';
+
+import {
+  handleWebhook,
+} from './controllers/payment.controller';
+
+import {
+  initRealtime,
+} from './services/realtime.service';
+
+import {
+  runInstallmentReminderSweep,
+} from './services/reminder.service';
+
+// IMPORTANT:
+// notification.routes.ts uses `export default router`
+import notificationRoutes from './routes/notification.routes';
 
 const app = express();
 
-const PORT = Number(process.env.PORT) || 8080;
+const PORT =
+  Number(process.env.PORT) || 8080;
 
-// --- Security & core middleware --------------------------------------------
+// ---------------------------------------------------------------------------
+// SECURITY
+// ---------------------------------------------------------------------------
 
 app.use(
   helmet({
@@ -25,88 +50,233 @@ app.use(
   })
 );
 
+// ---------------------------------------------------------------------------
+// CORS
+// ---------------------------------------------------------------------------
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin:
+      process.env.FRONTEND_URL ||
+      'http://localhost:5173',
+
     credentials: true,
+
+    methods: [
+      'GET',
+      'POST',
+      'PUT',
+      'PATCH',
+      'DELETE',
+      'OPTIONS',
+    ],
+
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+    ],
   })
 );
 
-// Razorpay webhook must be before express.json()
+// ---------------------------------------------------------------------------
+// RAZORPAY WEBHOOK
+//
+// IMPORTANT:
+// Must be mounted BEFORE express.json().
+//
+// Razorpay signature verification requires the original raw request body.
+// ---------------------------------------------------------------------------
+
 app.post(
   '/api/payments/webhook',
-  express.raw({ type: 'application/json' }),
-  (req, _res, next) => {
-    (req as any).rawBody = req.body;
+
+  express.raw({
+    type: 'application/json',
+  }),
+
+  (
+    req,
+    _res,
+    next
+  ) => {
+    (req as any).rawBody =
+      req.body;
+
     next();
   },
+
   handleWebhook
 );
 
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true }));
+// ---------------------------------------------------------------------------
+// BODY PARSERS
+// ---------------------------------------------------------------------------
 
-app.use(cookieParser());
+app.use(
+  express.json({
+    limit: '2mb',
+  })
+);
+
+app.use(
+  express.urlencoded({
+    extended: true,
+  })
+);
+
+app.use(
+  cookieParser()
+);
+
+// ---------------------------------------------------------------------------
+// LOGGING
+// ---------------------------------------------------------------------------
 
 app.use(
   morgan(
-    process.env.NODE_ENV === 'production'
+    process.env.NODE_ENV ===
+      'production'
       ? 'combined'
       : 'dev'
   )
 );
 
-app.use('/api', apiRateLimiter);
+// ---------------------------------------------------------------------------
+// RATE LIMITING
+// ---------------------------------------------------------------------------
 
-// Static uploads
 app.use(
-  '/uploads',
-  express.static(path.join(process.cwd(), 'uploads'))
+  '/api',
+  apiRateLimiter
 );
 
-// --- Routes ----------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// LEGACY STATIC UPLOADS
+//
+// Keep this temporarily because older records may still reference /uploads.
+//
+// New profile pictures, receipts and certificates should use
+// Google Cloud Storage.
+// ---------------------------------------------------------------------------
 
-app.use('/api', routes);
+app.use(
+  '/uploads',
 
-// --- Error handling --------------------------------------------------------
+  express.static(
+    path.join(
+      process.cwd(),
+      'uploads'
+    )
+  )
+);
 
-app.use(notFoundHandler);
-app.use(errorHandler);
+// ---------------------------------------------------------------------------
+// NOTIFICATION ROUTES
+//
+// Provides:
+// GET    /api/notifications
+// PATCH  /api/notifications/read-all
+// PATCH  /api/notifications/:id/read
+// POST   /api/notifications/push/subscribe
+// POST   /api/notifications/push/unsubscribe
+// ---------------------------------------------------------------------------
 
-// --- HTTP Server + Socket.IO -----------------------------------------------
+app.use(
+  '/api/notifications',
+  notificationRoutes
+);
 
-const server = http.createServer(app);
+// ---------------------------------------------------------------------------
+// MAIN API ROUTES
+// ---------------------------------------------------------------------------
+
+app.use(
+  '/api',
+  routes
+);
+
+// ---------------------------------------------------------------------------
+// ERROR HANDLING
+// ---------------------------------------------------------------------------
+
+app.use(
+  notFoundHandler
+);
+
+app.use(
+  errorHandler
+);
+
+// ---------------------------------------------------------------------------
+// HTTP SERVER
+// ---------------------------------------------------------------------------
+
+const server =
+  http.createServer(app);
+
+// ---------------------------------------------------------------------------
+// SOCKET.IO / REAL-TIME WEBSITE NOTIFICATIONS
+// ---------------------------------------------------------------------------
 
 initRealtime(server);
 
-// --- Installment reminder --------------------------------------------------
+// ---------------------------------------------------------------------------
+// INSTALLMENT REMINDERS
+//
+// Sweep immediately after startup and then every 6 hours.
+//
+// Cloud Run instances can sleep/restart, so this is best-effort.
+// ---------------------------------------------------------------------------
 
 const REMINDER_SWEEP_INTERVAL_MS =
   6 * 60 * 60 * 1000;
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`ASK IT Technologies API started`);
-  console.log(`Port: ${PORT}`);
-  console.log(`Health endpoint: /api/health`);
-  console.log(`Realtime notifications enabled`);
+server.listen(
+  PORT,
+  '0.0.0.0',
+  () => {
+    console.log(
+      'AskIT Technologies API started'
+    );
 
-  setTimeout(() => {
-    runInstallmentReminderSweep().catch((err) => {
-      console.error(
-        'Installment reminder sweep failed:',
-        err
-      );
-    });
-  }, 15_000);
+    console.log(
+      `Port: ${PORT}`
+    );
 
-  setInterval(() => {
-    runInstallmentReminderSweep().catch((err) => {
-      console.error(
-        'Installment reminder sweep failed:',
-        err
-      );
-    });
-  }, REMINDER_SWEEP_INTERVAL_MS);
-});
+    console.log(
+      'Health endpoint: /api/health'
+    );
+
+    console.log(
+      'Realtime notifications enabled'
+    );
+
+    console.log(
+      'Web Push notifications enabled when VAPID is configured'
+    );
+
+    // First reminder sweep after server startup.
+    setTimeout(() => {
+      runInstallmentReminderSweep()
+        .catch((err) => {
+          console.error(
+            'Installment reminder sweep failed:',
+            err
+          );
+        });
+    }, 15_000);
+
+    // Re-run reminder sweep every 6 hours.
+    setInterval(() => {
+      runInstallmentReminderSweep()
+        .catch((err) => {
+          console.error(
+            'Installment reminder sweep failed:',
+            err
+          );
+        });
+    }, REMINDER_SWEEP_INTERVAL_MS);
+  }
+);
 
 export default app;
