@@ -76,9 +76,10 @@ router.get('/internships/:internshipId/attendance-report', requirePermission('ma
 // Certificates
 router.get('/certificates', requirePermission('manageCertificates'), certificateController.adminListCertificates);
 router.post('/certificates/generate', requirePermission('manageCertificates'), certificateController.generateCertificate);
+
 router.put('/certificates/:id/issue', requirePermission('manageCertificates'), certificateController.issueCertificate);
 router.put('/certificates/:id/reissue', requirePermission('manageCertificates'), certificateController.reissueCertificate);
-
+router.get('/certificates/:id/download', requirePermission('manageCertificates'), certificateController.downloadCertificate);
 // Announcements
 router.get('/announcements', requirePermission('manageAnnouncements'), adminController.listAnnouncements);
 router.post('/announcements', requirePermission('manageAnnouncements'), adminController.createGlobalAnnouncement);

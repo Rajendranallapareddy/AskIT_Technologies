@@ -1,6 +1,8 @@
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { Storage } from '@google-cloud/storage';
+import fs from 'fs';
+import path from 'path';
 
 const storage = new Storage();
 
@@ -20,7 +22,21 @@ interface ReceiptData {
   paidAt: Date;
 }
 
-const CURRENCY = (n: number) => `Rs. ${Number(n).toFixed(2)}`;
+const NAVY = '#123f8f';
+const DEEP_NAVY = '#0b2868';
+const BLUE = '#0d6efd';
+const ORANGE = '#f97316';
+const LIGHT_ORANGE = '#fff7ed';
+const TEXT = '#111827';
+const MUTED = '#6b7280';
+const BORDER = '#dbe3ef';
+const LIGHT_BLUE = '#eff6ff';
+
+const money = (n: number) =>
+  `INR ${Number(n || 0).toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
 function getBucket() {
   const bucketName = process.env.GCS_BUCKET_NAME?.trim();
@@ -32,12 +48,34 @@ function getBucket() {
   return storage.bucket(bucketName);
 }
 
-/**
- * Creates the receipt PDF completely in memory.
- *
- * Nothing is written to Cloud Run's local filesystem because Cloud Run
- * storage is temporary and can disappear whenever an instance restarts.
- */
+function getLogoPath(): string {
+  const candidates = [
+    path.join(process.cwd(), 'assets', 'askit-logo.jpeg'),
+    path.join(process.cwd(), 'assets', 'askit-logo.jpg'),
+    path.join(process.cwd(), 'assets', 'askit-logo.png'),
+  ];
+
+  const found = candidates.find((candidate) => fs.existsSync(candidate));
+
+  if (!found) {
+    throw new Error(
+      'AskIT receipt logo was not found. Add the logo to backend/assets/askit-logo.jpeg'
+    );
+  }
+
+  return found;
+}
+
+function safeDate(date: Date) {
+  return new Date(date).toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 async function createReceiptPdfBuffer(data: ReceiptData): Promise<Buffer> {
   const frontendUrl =
     process.env.FRONTEND_URL?.replace(/\/+$/, '') ||
@@ -51,416 +89,498 @@ async function createReceiptPdfBuffer(data: ReceiptData): Promise<Buffer> {
     process.env.NODE_ENV === 'production'
   ) {
     console.warn(
-      `[receipt.service] FRONTEND_URL is "${process.env.FRONTEND_URL}" ` +
-        'in production. Receipt QR verification will not work publicly.'
+      `[receipt.service] FRONTEND_URL is "${process.env.FRONTEND_URL}" in production. ` +
+        'Receipt QR verification will not work publicly.'
     );
   }
 
   const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
     margin: 1,
-    width: 160,
+    width: 220,
+    errorCorrectionLevel: 'M',
   });
 
-  const qrBuffer = Buffer.from(
-    qrDataUrl.split(',')[1],
-    'base64'
-  );
+  const qrBuffer = Buffer.from(qrDataUrl.split(',')[1], 'base64');
+  const logoPath = getLogoPath();
 
   return new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4',
-      margin: 50,
+      margin: 0,
+      info: {
+        Title: `AskIT Technologies Receipt ${data.receiptNo}`,
+        Author: 'AskIT Technologies',
+        Subject: 'Payment Receipt',
+      },
     });
 
     const chunks: Buffer[] = [];
 
-    doc.on('data', (chunk: Buffer) => {
-      chunks.push(chunk);
-    });
-
-    doc.on('end', () => {
-      resolve(Buffer.concat(chunks));
-    });
-
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    // -------------------------------------------------------------
+    const pageWidth = doc.page.width;
+    const pageHeight = doc.page.height;
+    const left = 42;
+    const right = pageWidth - 42;
+    const contentWidth = right - left;
+
+    // ---------------------------------------------------------------------
     // HEADER
-    // -------------------------------------------------------------
+    // ---------------------------------------------------------------------
+
+    doc.image(logoPath, left, 30, {
+      fit: [105, 94],
+      align: 'center',
+      valign: 'center',
+    });
 
     doc
-      .fontSize(22)
-      .fillColor('#1e3a8a')
       .font('Helvetica-Bold')
-      .text('AskIT Technologies', 50, 50);
+      .fontSize(24)
+      .fillColor(DEEP_NAVY)
+      .text('AskIT', 155, 45, { continued: true })
+      .fillColor(ORANGE)
+      .text(' Technologies');
 
     doc
-      .fontSize(10)
-      .fillColor('#666')
       .font('Helvetica')
-      .text('info@askittechnologies.com', 50, 92);
-
-    doc
-      .fontSize(16)
-      .fillColor('#f97316')
-      .font('Helvetica-Bold')
-      .text('PAYMENT RECEIPT', 350, 50, {
-        width: 195,
-        align: 'right',
-      });
+      .fontSize(8.5)
+      .fillColor(MUTED)
+      .text('LEARN TODAY  |  GROW TOMORROW  |  SUCCEED ALWAYS', 156, 76);
 
     doc
       .fontSize(9)
-      .fillColor('#666')
-      .font('Helvetica')
-      .text(
-        `Receipt No: ${data.receiptNo}`,
-        350,
-        74,
-        {
-          width: 195,
-          align: 'right',
-        }
-      );
+      .fillColor(TEXT)
+      .text('info@askittechnologies.com', 156, 96);
 
-    doc.text(
-      `Date: ${data.paidAt.toLocaleString('en-IN')}`,
-      350,
-      87,
-      {
-        width: 195,
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(19)
+      .fillColor(ORANGE)
+      .text('PAYMENT RECEIPT', 365, 42, {
+        width: 188,
         align: 'right',
-      }
-    );
-
-    doc
-      .moveTo(50, 115)
-      .lineTo(545, 115)
-      .strokeColor('#e2e8f0')
-      .stroke();
-
-    // -------------------------------------------------------------
-    // BILLED TO / PROGRAM
-    // -------------------------------------------------------------
-
-    doc
-      .fontSize(11)
-      .fillColor('#111')
-      .font('Helvetica-Bold')
-      .text('Billed To', 50, 130);
-
-    doc
-      .fontSize(10)
-      .fillColor('#333')
-      .font('Helvetica')
-      .text(data.studentName, 50, 148);
-
-    doc.text(data.studentEmail, 50, 163);
-
-    doc
-      .fontSize(11)
-      .fillColor('#111')
-      .font('Helvetica-Bold')
-      .text('Program', 300, 130);
-
-    doc
-      .fontSize(10)
-      .fillColor('#333')
-      .font('Helvetica')
-      .text(data.internshipTitle, 300, 148, {
-        width: 245,
       });
 
-    // -------------------------------------------------------------
-    // AMOUNT TABLE
-    // -------------------------------------------------------------
-
-    let y = 210;
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(8.5)
+      .fillColor(TEXT)
+      .text('Receipt No:', 373, 80, {
+        width: 70,
+        align: 'right',
+      });
 
     doc
-      .moveTo(50, y)
-      .lineTo(545, y)
-      .strokeColor('#e2e8f0')
+      .font('Helvetica')
+      .text(data.receiptNo, 448, 80, {
+        width: 105,
+        align: 'right',
+      });
+
+    doc
+      .font('Helvetica-Bold')
+      .text('Date:', 373, 97, {
+        width: 70,
+        align: 'right',
+      });
+
+    doc
+      .font('Helvetica')
+      .text(safeDate(data.paidAt), 448, 97, {
+        width: 105,
+        align: 'right',
+      });
+
+    doc
+      .moveTo(left, 132)
+      .lineTo(right, 132)
+      .lineWidth(1.5)
+      .strokeColor(NAVY)
       .stroke();
 
-    y += 15;
+    // ---------------------------------------------------------------------
+    // BILLED TO / PROGRAM
+    // ---------------------------------------------------------------------
 
     doc
-      .fontSize(10)
       .font('Helvetica-Bold')
-      .fillColor('#111');
+      .fontSize(10.5)
+      .fillColor(NAVY)
+      .text('BILLED TO', left, 153);
 
-    doc.text('Description', 50, y);
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(11.5)
+      .fillColor(TEXT)
+      .text(data.studentName, left, 177, {
+        width: 240,
+      });
 
-    doc.text('Amount', 450, y, {
-      width: 95,
+    doc
+      .font('Helvetica')
+      .fontSize(9)
+      .fillColor('#374151')
+      .text(data.studentEmail, left, 198, {
+        width: 240,
+      });
+
+    doc
+      .moveTo(296, 151)
+      .lineTo(296, 222)
+      .lineWidth(0.7)
+      .strokeColor(BORDER)
+      .stroke();
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(10.5)
+      .fillColor(NAVY)
+      .text('PROGRAM', 322, 153);
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(11.5)
+      .fillColor(TEXT)
+      .text(data.internshipTitle, 322, 177, {
+        width: 230,
+        lineGap: 2,
+      });
+
+    doc
+      .font('Helvetica')
+      .fontSize(8.8)
+      .fillColor(MUTED)
+      .text('Course / Internship Program', 322, 212, {
+        width: 230,
+      });
+
+    // ---------------------------------------------------------------------
+    // FEE TABLE
+    // ---------------------------------------------------------------------
+
+    const tableTop = 250;
+
+    doc
+      .roundedRect(left, tableTop, contentWidth, 30, 5)
+      .fill(NAVY);
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(9.5)
+      .fillColor('#ffffff')
+      .text('DESCRIPTION', left + 12, tableTop + 10);
+
+    doc.text('AMOUNT (INR)', right - 115, tableTop + 10, {
+      width: 103,
       align: 'right',
     });
 
-    y += 20;
+    let rowY = tableTop + 47;
 
-    doc
-      .moveTo(50, y)
-      .lineTo(545, y)
-      .strokeColor('#e2e8f0')
-      .stroke();
-
-    y += 12;
-
-    doc
-      .font('Helvetica')
-      .fillColor('#333');
-
-    const row = (
+    const drawRow = (
       label: string,
       value: string,
-      bold = false
+      options?: { valueColor?: string; bold?: boolean }
     ) => {
-      doc.font(
-        bold ? 'Helvetica-Bold' : 'Helvetica'
-      );
+      doc
+        .font(options?.bold ? 'Helvetica-Bold' : 'Helvetica')
+        .fontSize(9.5)
+        .fillColor(TEXT)
+        .text(label, left + 8, rowY);
 
-      doc.text(label, 50, y);
+      doc
+        .font(options?.bold ? 'Helvetica-Bold' : 'Helvetica')
+        .fillColor(options?.valueColor || TEXT)
+        .text(value, right - 145, rowY, {
+          width: 137,
+          align: 'right',
+        });
 
-      doc.text(value, 450, y, {
-        width: 95,
-        align: 'right',
-      });
+      rowY += 27;
 
-      y += 20;
+      doc
+        .moveTo(left + 6, rowY - 9)
+        .lineTo(right - 6, rowY - 9)
+        .dash(1.2, { space: 2 })
+        .lineWidth(0.5)
+        .strokeColor('#cbd5e1')
+        .stroke()
+        .undash();
     };
 
-    row(
-      'Course / Internship Fee',
-      CURRENCY(data.baseAmount)
-    );
+    drawRow('Course / Internship Fee', money(data.baseAmount));
 
     if (data.discountAmount > 0) {
-      row(
+      drawRow(
         'Discount',
-        `- ${CURRENCY(data.discountAmount)}`
+        `- ${money(data.discountAmount)}`,
+        { valueColor: '#dc2626' }
       );
     }
 
     if (data.taxAmount > 0) {
-      row(
-        `GST (${data.gstPercentage}%)`,
-        CURRENCY(data.taxAmount)
+      drawRow(
+        `GST (${Number(data.gstPercentage || 0).toFixed(0)}%)`,
+        money(data.taxAmount)
       );
     }
 
-    y += 10;
+    // ---------------------------------------------------------------------
+    // AMOUNT PAID BAND
+    // ---------------------------------------------------------------------
 
-    // -------------------------------------------------------------
-    // AMOUNT PAID
-    // -------------------------------------------------------------
-
-    const bandHeight = 44;
+    rowY += 6;
 
     doc
-      .rect(50, y, 495, bandHeight)
-      .fill('#fff7ed');
+      .roundedRect(left, rowY, contentWidth, 54, 6)
+      .lineWidth(1)
+      .strokeColor(ORANGE)
+      .fillAndStroke(LIGHT_ORANGE, ORANGE);
 
     doc
-      .fontSize(12)
       .font('Helvetica-Bold')
-      .fillColor('#9a3412')
-      .text('AMOUNT PAID', 66, y + 15);
-
-    doc
-      .fontSize(19)
-      .font('Helvetica-Bold')
+      .fontSize(14)
       .fillColor('#c2410c')
-      .text(
-        CURRENCY(data.totalAmount),
-        280,
-        y + 11,
-        {
-          width: 249,
+      .text('AMOUNT PAID', left + 15, rowY + 18);
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(21)
+      .fillColor('#c2410c')
+      .text(money(data.totalAmount), 310, rowY + 14, {
+        width: 235,
+        align: 'right',
+      });
+
+    // ---------------------------------------------------------------------
+    // PAYMENT DETAILS + QR VERIFY
+    // ---------------------------------------------------------------------
+
+    const detailsTop = rowY + 82;
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(10.5)
+      .fillColor(NAVY)
+      .text('PAYMENT DETAILS', left, detailsTop);
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(10.5)
+      .fillColor(NAVY)
+      .text('VERIFY THIS RECEIPT', 322, detailsTop);
+
+    const labelX = left + 7;
+    const valueX = 165;
+    let detailsY = detailsTop + 28;
+
+    const detailRow = (label: string, value: string) => {
+      doc
+        .font('Helvetica')
+        .fontSize(8.8)
+        .fillColor(MUTED)
+        .text(label, labelX, detailsY, { width: 110 });
+
+      doc
+        .font('Helvetica-Bold')
+        .fillColor(TEXT)
+        .text(value || 'N/A', valueX, detailsY, {
+          width: 116,
           align: 'right',
-        }
-      );
+        });
 
-    y += bandHeight + 22;
+      detailsY += 32;
 
-    // -------------------------------------------------------------
-    // PAYMENT DETAILS
-    // -------------------------------------------------------------
+      doc
+        .moveTo(labelX, detailsY - 12)
+        .lineTo(281, detailsY - 12)
+        .lineWidth(0.5)
+        .strokeColor(BORDER)
+        .stroke();
+    };
 
-    doc
-      .fontSize(9)
-      .fillColor('#666')
-      .font('Helvetica');
-
-    doc.text(
-      `Payment Method: ${data.method || 'N/A'}`,
-      50,
-      y,
-      {
-        width: 340,
-      }
-    );
-
-    y += 14;
-
-    doc.text(
-      `Transaction Reference: ${
-        data.gatewayPaymentId || 'N/A'
-      }`,
-      50,
-      y,
-      {
-        width: 340,
-      }
-    );
-
-    y += 14;
-
-    doc.text(
-      `Paid On: ${data.paidAt.toLocaleString(
-        'en-IN'
-      )}`,
-      50,
-      y,
-      {
-        width: 340,
-      }
-    );
-
-    const metaBottom = y + 14;
-
-    // -------------------------------------------------------------
-    // QR VERIFICATION
-    // -------------------------------------------------------------
-
-    const qrTop = metaBottom + 16;
-
-    doc.image(qrBuffer, 50, qrTop, {
-      width: 80,
-      height: 80,
-    });
+    detailRow('Payment Method', data.method || 'N/A');
+    detailRow('Transaction ID', data.gatewayPaymentId || 'N/A');
+    detailRow('Payment Date', safeDate(data.paidAt));
 
     doc
-      .fontSize(8)
-      .fillColor('#999')
-      .font('Helvetica')
-      .text(
-        'Scan to verify this receipt online, or visit:',
-        140,
-        qrTop + 6,
-        {
-          width: 405,
-        }
-      );
-
-    doc
-      .fontSize(8)
-      .fillColor('#2563eb')
-      .font('Helvetica')
-      .text(
-        verifyUrl,
-        140,
-        qrTop + 20,
-        {
-          width: 405,
-        }
-      );
-
-    doc
-      .fontSize(8)
-      .fillColor('#999')
-      .font('Helvetica')
-      .text(
-        `Verification code: ${data.verifyToken}`,
-        140,
-        qrTop + 38,
-        {
-          width: 405,
-        }
-      );
-
-    y = qrTop + 100;
-
-    // -------------------------------------------------------------
-    // FOOTER
-    // -------------------------------------------------------------
-
-    const footerTop = Math.max(y, 730);
-
-    doc
-      .moveTo(50, footerTop - 12)
-      .lineTo(545, footerTop - 12)
-      .strokeColor('#e2e8f0')
+      .moveTo(296, detailsTop - 3)
+      .lineTo(296, detailsY - 5)
+      .lineWidth(0.7)
+      .strokeColor(BORDER)
       .stroke();
 
     doc
+      .roundedRect(322, detailsTop + 24, 102, 102, 4)
+      .lineWidth(0.8)
+      .strokeColor('#94a3b8')
+      .stroke();
+
+    doc.image(qrBuffer, 328, detailsTop + 30, {
+      width: 90,
+      height: 90,
+    });
+
+    doc
+      .font('Helvetica')
       .fontSize(8)
-      .fillColor('#999')
+      .fillColor(TEXT)
       .text(
-        'This is a system-generated receipt and does not require a physical signature. ' +
+        'Scan to verify this receipt online or visit:',
+        438,
+        detailsTop + 30,
+        { width: 115 }
+      );
+
+    doc
+      .font('Helvetica')
+      .fontSize(7.2)
+      .fillColor(BLUE)
+      .text(verifyUrl, 438, detailsTop + 55, {
+        width: 115,
+        lineGap: 1,
+      });
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(8)
+      .fillColor(TEXT)
+      .text('Verification Code:', 438, detailsTop + 96, {
+        width: 115,
+      });
+
+    doc
+      .font('Helvetica')
+      .fontSize(7.1)
+      .fillColor(NAVY)
+      .text(data.verifyToken, 438, detailsTop + 109, {
+        width: 115,
+      });
+
+    // ---------------------------------------------------------------------
+    // LEGAL NOTE / SIGNATURE
+    // ---------------------------------------------------------------------
+
+    const noteTop = Math.min(detailsY + 20, 700);
+
+    doc
+      .moveTo(left, noteTop)
+      .lineTo(right, noteTop)
+      .dash(1.5, { space: 2 })
+      .lineWidth(0.7)
+      .strokeColor(NAVY)
+      .stroke()
+      .undash();
+
+    doc
+      .roundedRect(left, noteTop + 20, 18, 18, 9)
+      .fill(LIGHT_BLUE);
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(9)
+      .fillColor(NAVY)
+      .text('i', left + 7, noteTop + 24);
+
+    doc
+      .font('Helvetica')
+      .fontSize(8)
+      .fillColor('#475569')
+      .text(
+        'This is a system-generated receipt and does not require a physical signature.\n' +
           'For any billing queries, contact info@askittechnologies.com.',
-        50,
-        footerTop,
+        left + 28,
+        noteTop + 20,
         {
-          width: 495,
-          align: 'center',
+          width: 330,
+          lineGap: 2,
         }
       );
 
-    doc.text(
-      'Authorized Signatory — AskIT Technologies',
-      50,
-      footerTop + 16,
-      {
-        width: 495,
-        align: 'right',
-      }
-    );
+    doc
+      .moveTo(410, noteTop + 40)
+      .lineTo(right, noteTop + 40)
+      .lineWidth(0.8)
+      .strokeColor(TEXT)
+      .stroke();
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(8.7)
+      .fillColor(NAVY)
+      .text('Authorized Signatory', 410, noteTop + 48, {
+        width: right - 410,
+        align: 'center',
+      });
+
+    doc
+      .font('Helvetica')
+      .fontSize(8)
+      .fillColor(TEXT)
+      .text('AskIT Technologies', 410, noteTop + 61, {
+        width: right - 410,
+        align: 'center',
+      });
+
+    // ---------------------------------------------------------------------
+    // BOTTOM THANK-YOU STRIP
+    // ---------------------------------------------------------------------
+
+    doc
+      .rect(0, pageHeight - 34, pageWidth, 34)
+      .fill(NAVY);
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(10)
+      .fillColor('#ffffff')
+      .text(
+        'Thank you for choosing AskIT Technologies!',
+        0,
+        pageHeight - 22,
+        {
+          width: pageWidth,
+          align: 'center',
+        }
+      );
 
     doc.end();
   });
 }
 
 /**
- * Generate receipt PDF and permanently store it in Google Cloud Storage.
+ * Generates a permanent PDF and stores it privately in Google Cloud Storage.
  *
- * The DB stores an object path such as:
- * receipts/ASKIT-RCPT-2026-123456.pdf
- *
- * We intentionally do NOT store a signed URL in the DB because signed URLs
- * expire. A fresh signed URL is generated whenever a student downloads it.
+ * Stored database value:
+ * receipts/ASKIT-RCPT-....pdf
  */
 export async function generateReceiptPdf(
   data: ReceiptData
 ): Promise<string> {
-  const pdfBuffer =
-    await createReceiptPdfBuffer(data);
+  const pdfBuffer = await createReceiptPdfBuffer(data);
 
-  const objectPath =
-    `receipts/${data.receiptNo}.pdf`;
-
-  const cloudFile =
-    getBucket().file(objectPath);
+  const objectPath = `receipts/${data.receiptNo}.pdf`;
+  const cloudFile = getBucket().file(objectPath);
 
   await cloudFile.save(pdfBuffer, {
     resumable: false,
     metadata: {
       contentType: 'application/pdf',
       cacheControl: 'private, max-age=3600',
-      contentDisposition:
-        `attachment; filename="${data.receiptNo}.pdf"`,
+      contentDisposition: `attachment; filename="${data.receiptNo}.pdf"`,
     },
   });
 
-  console.log(
-    `[RECEIPT] Uploaded ${objectPath} to Cloud Storage`
-  );
+  console.log(`[RECEIPT] Uploaded ${objectPath} to Cloud Storage`);
 
   return objectPath;
 }
 
 /**
- * Generates a temporary secure URL for downloading a private receipt.
+ * Generates a temporary secure download URL for a private receipt.
  */
 export async function getReceiptSignedUrl(
   objectPath: string
@@ -469,7 +589,6 @@ export async function getReceiptSignedUrl(
     throw new Error('Receipt object path is missing');
   }
 
-  // Already a complete URL — useful only for backwards compatibility.
   if (
     objectPath.startsWith('http://') ||
     objectPath.startsWith('https://')
@@ -478,28 +597,19 @@ export async function getReceiptSignedUrl(
   }
 
   if (objectPath.startsWith('/uploads/')) {
-    throw new Error(
-      'LEGACY_LOCAL_RECEIPT'
-    );
+    throw new Error('LEGACY_LOCAL_RECEIPT');
   }
 
-  const [signedUrl] =
-    await getBucket()
-      .file(objectPath)
-      .getSignedUrl({
-        version: 'v4',
-        action: 'read',
+  const fileName = objectPath.split('/').pop() || 'receipt.pdf';
 
-        // 1 hour
-        expires:
-          Date.now() +
-          60 * 60 * 1000,
-
-        responseDisposition:
-          `attachment; filename="${objectPath
-            .split('/')
-            .pop()}"`,
-      });
+  const [signedUrl] = await getBucket()
+    .file(objectPath)
+    .getSignedUrl({
+      version: 'v4',
+      action: 'read',
+      expires: Date.now() + 60 * 60 * 1000,
+      responseDisposition: `attachment; filename="${fileName}"`,
+    });
 
   return signedUrl;
 }

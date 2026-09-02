@@ -42,7 +42,7 @@ export const userApi = {
   cancelRegistration: (id: string) => apiClient.put(`/users/registrations/${id}/cancel`),
   attendance: () => apiClient.get('/users/attendance'),
   certificates: () => apiClient.get('/users/certificates'),
-  downloadCertificate: (id: string) => apiClient.get(`/users/certificates/${id}/download`,{ responseType: 'blob', }),  
+  downloadCertificate: (id: string) => apiClient.get( `/users/certificates/${id}/download`),
   materials: () => apiClient.get('/users/materials'),
   sessions: () => apiClient.get('/users/sessions'),
 };
@@ -91,9 +91,10 @@ export const adminApi = {
   trainerPerformance: (id: string) => apiClient.get(`/admin/trainers/${id}/performance`),
 
   certificates: () => apiClient.get('/admin/certificates'),
-  generateCertificate: (userId: string, internshipId: string) =>
-    apiClient.post('/admin/certificates/generate', { userId, internshipId }),
-  issueCertificate: (id: string) => apiClient.put(`/admin/certificates/${id}/issue`),
+  generateCertificate: (userId: string, internshipId: string) => apiClient.post('/admin/certificates/generate', {userId,internshipId,}),
+  issueCertificate: (id: string) => apiClient.put( `/admin/certificates/${id}/issue`),
+  reissueCertificate: (id: string) => apiClient.put( `/admin/certificates/${id}/reissue`),
+  downloadCertificate: (id: string) => apiClient.get( `/admin/certificates/${id}/download`),
 
   announcements: () => apiClient.get('/admin/announcements'),
   createAnnouncement: (data: any) => apiClient.post('/admin/announcements', data),
@@ -119,7 +120,7 @@ export const paymentApi = {
   get: (id: string) => apiClient.get(`/payments/${id}`),
 
   downloadReceipt: (paymentId: string) => apiClient.get(`/payments/receipts/${paymentId}/download`),
-  
+
   requestRefund: (paymentId: string, reason: string) => apiClient.post(`/payments/${paymentId}/refund-request`, { reason }),
   verifyReceipt: (token: string) => apiClient.get(`/payments/verify-receipt/${token}`),
   validateCoupon: (internshipId: string, couponCode?: string) => apiClient.post('/public/coupons/validate', { internshipId, couponCode: couponCode || undefined }),

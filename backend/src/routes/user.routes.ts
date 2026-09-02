@@ -27,7 +27,7 @@ router.put('/registrations/:id/cancel', registrationController.cancelRegistratio
 
 router.get('/attendance', attendanceController.getMyAttendance);
 router.get('/certificates', certificateController.getMyCertificates);
-router.get('/certificates/:id/download', certificateController.downloadMyCertificate);
+router.get('/certificates/:id/download', certificateController.downloadCertificate);
 router.get('/materials', userController.getMyMaterials);
 router.get('/sessions', attendanceController.getMyAvailableSessions);
 

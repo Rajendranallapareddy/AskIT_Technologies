@@ -1,86 +1,94 @@
 import { useState } from 'react';
-import { Award, Download, Loader2 } from 'lucide-react';
-
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
-import EmptyState from '../../components/common/EmptyState';
-
 import { USER_LINKS } from './_links';
 import { useApiQuery } from '../../hooks/useQuery';
-import { useToast } from '../../hooks/useToast';
-
 import { userApi } from '../../api/endpoints';
-
-import { formatDate } from '../../utils/formatters';
+import { useToast } from '../../hooks/useToast';
 import { getErrorMessage } from '../../utils/helpers';
-
+import LoadingSpinner from '../../components/common/LoadingSpinner';
+import ErrorState from '../../components/common/ErrorState';
+import EmptyState from '../../components/common/EmptyState';
+import Button from '../../components/common/Button';
+import {
+  Award,
+  Download,
+  ShieldCheck,
+} from 'lucide-react';
+import { formatDate } from '../../utils/formatters';
 import type { Certificate } from '../../types';
 
 export default function MyCertificates() {
   const {
     data,
     isLoading,
-  } = useApiQuery<Certificate[]>(
-    () => userApi.certificates()
-  );
+    error,
+    refetch,
+  } =
+    useApiQuery<Certificate[]>(
+      () =>
+        userApi.certificates()
+    );
 
-  const toast = useToast();
+  const toast =
+    useToast();
 
   const [
     downloadingId,
     setDownloadingId,
-  ] = useState<string | null>(null);
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const handleDownload = async (
-    certificate: Certificate
-  ) => {
-    if (downloadingId) return;
+  const downloadCertificate =
+    async (
+      certificateId: string
+    ) => {
+      if (downloadingId) {
+        return;
+      }
 
-    try {
-      setDownloadingId(certificate.id);
+      setDownloadingId(
+        certificateId
+      );
 
-      const response =
-        await userApi.downloadCertificate(
-          certificate.id
-        );
+      try {
+        const response =
+          await userApi.downloadCertificate(
+            certificateId
+          );
 
-      const blob = new Blob(
-        [response.data],
-        {
-          type: 'application/pdf',
+        const fileUrl =
+          response.data?.data
+            ?.fileUrl;
+
+        if (!fileUrl) {
+          throw new Error(
+            'Certificate download URL was not returned.'
+          );
         }
-      );
 
-      const blobUrl =
-        window.URL.createObjectURL(blob);
+        const opened =
+          window.open(
+            fileUrl,
+            '_blank',
+            'noopener,noreferrer'
+          );
 
-      const link =
-        document.createElement('a');
-
-      link.href = blobUrl;
-
-      link.download =
-        `${certificate.certificateNo}.pdf`;
-
-      document.body.appendChild(link);
-
-      link.click();
-
-      link.remove();
-
-      // Give the browser a moment to start
-      // reading the blob before removing it.
-      window.setTimeout(() => {
-        window.URL.revokeObjectURL(blobUrl);
-      }, 1000);
-    } catch (err) {
-      toast.error(
-        getErrorMessage(err)
-      );
-    } finally {
-      setDownloadingId(null);
-    }
-  };
+        if (!opened) {
+          window.location.href =
+            fileUrl;
+        }
+      } catch (err) {
+        toast.error(
+          getErrorMessage(err)
+        );
+      } finally {
+        setDownloadingId(
+          null
+        );
+      }
+    };
 
   return (
     <DashboardLayout
@@ -90,6 +98,11 @@ export default function MyCertificates() {
     >
       {isLoading || !data ? (
         <LoadingSpinner />
+      ) : error ? (
+        <ErrorState
+          message={error}
+          onRetry={refetch}
+        />
       ) : data.length === 0 ? (
         <EmptyState
           icon={
@@ -100,75 +113,72 @@ export default function MyCertificates() {
         />
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {data.map((certificate) => {
-            const isDownloading =
-              downloadingId === certificate.id;
+          {data.map((c) => (
+            <div
+              key={c.id}
+              className="card p-6 text-center relative overflow-hidden"
+            >
+              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-navy-700 via-orange-500 to-navy-700" />
 
-            return (
-              <div
-                key={certificate.id}
-                className="card p-6 text-center"
-              >
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-orange-50 flex items-center justify-center">
                 <Award
-                  className={`w-10 h-10 mx-auto ${
-                    certificate.status ===
+                  className={`w-9 h-9 ${
+                    c.status ===
                     'ISSUED'
                       ? 'text-orange-500'
                       : 'text-navy-300'
                   }`}
                 />
-
-                <h3 className="font-bold text-navy-900 mt-3">
-                  {
-                    certificate.internship
-                      .title
-                  }
-                </h3>
-
-                <p className="text-xs text-navy-400 mt-1">
-                  #
-                  {
-                    certificate.certificateNo
-                  }
-                </p>
-
-                <p className="text-xs text-navy-500 mt-1">
-                  {certificate.status ===
-                  'ISSUED'
-                    ? `Issued ${formatDate(
-                        certificate.issuedAt
-                      )}`
-                    : 'Pending approval'}
-                </p>
-
-                {certificate.status ===
-                  'ISSUED' && (
-                  <button
-                    type="button"
-                    disabled={isDownloading}
-                    onClick={() =>
-                      handleDownload(
-                        certificate
-                      )
-                    }
-                    className="btn-outline w-full mt-4 !py-2 text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {isDownloading ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        Downloading...
-                      </>
-                    ) : (
-                      <>
-                        <Download className="w-3.5 h-3.5" />
-                        Download Certificate
-                      </>
-                    )}
-                  </button>
-                )}
               </div>
-            );
-          })}
+
+              <h3 className="font-bold text-navy-900 mt-4">
+                {
+                  c.internship
+                    .title
+                }
+              </h3>
+
+              <p className="text-xs text-navy-400 mt-1 font-mono">
+                {
+                  c.certificateNo
+                }
+              </p>
+
+              <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-navy-500">
+                <ShieldCheck className="w-3.5 h-3.5" />
+
+                {c.status ===
+                'ISSUED'
+                  ? `Issued ${formatDate(
+                      c.issuedAt
+                    )}`
+                  : 'Pending approval'}
+              </div>
+
+              {c.status ===
+                'ISSUED' && (
+                <Button
+                  variant="outline"
+                  className="w-full mt-5 !py-2 text-xs"
+                  icon={
+                    <Download className="w-3.5 h-3.5" />
+                  }
+                  isLoading={
+                    downloadingId ===
+                    c.id
+                  }
+                  onClick={() =>
+                    downloadCertificate(
+                      c.id
+                    )
+                  }
+                >
+                  Download
+                  Certificate
+                </Button>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </DashboardLayout>
