@@ -676,33 +676,449 @@ async function finalizePaymentSuccess(payment: any, gatewayPaymentId: string, ga
   // Best-effort receipt delivery over email + WhatsApp. Failures here must
   // never roll back the payment itself — the payment already succeeded and
   // the receipt/registration are already saved, so we just log and move on.
-  try {
-    const { sendMail } = await import('../services/email.service');
-    const { sendWhatsApp, receiptWhatsAppMessage } = await import('../services/whatsapp.service');
-    const fullDownloadUrl = await getReceiptSignedUrl(fileUrl);
+  // Best-effort receipt delivery over email + WhatsApp.
+// Email/WhatsApp failure must never roll back a successful payment.
+try {
+  const { sendMail } = await import('../services/email.service');
 
-    await sendMail({
-      to: payment.user.email,
-      subject: `Payment Receipt — ${receiptNo}`,
-      html: `<p>Hi ${payment.user.fullName},</p><p>Your payment of ₹${payment.totalAmount} for "${payment.internship.title}" was successful.</p><p>Download your receipt: <a href="${fullDownloadUrl}">${fullDownloadUrl}</a></p>`,
+  const {
+    sendWhatsApp,
+    receiptWhatsAppMessage,
+  } = await import('../services/whatsapp.service');
+
+  // Generate a temporary signed Cloud Storage URL.
+  // Never concatenate FRONTEND_URL with fileUrl because
+  // fileUrl is now a GCS object path such as:
+  // receipts/ASKIT-RCPT-XXXX.pdf
+  const fullDownloadUrl =
+    await getReceiptSignedUrl(fileUrl);
+
+  const formattedAmount =
+    Number(payment.totalAmount).toLocaleString('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     });
 
-    if (payment.user.mobileNumber) {
-      await sendWhatsApp({
-        to: payment.user.mobileNumber,
-        body: receiptWhatsAppMessage({
-          studentName: payment.user.fullName,
-          internshipTitle: payment.internship.title,
-          amount: Number(payment.totalAmount),
-          receiptNo,
-          downloadUrl: fullDownloadUrl,
-        }),
-      });
-    }
-    await prisma.receipt.update({ where: { id: receipt.id }, data: { emailedAt: new Date() } });
-  } catch (deliveryErr) {
-    console.error('Receipt delivery (email/WhatsApp) failed:', deliveryErr);
+  const formattedDate =
+    new Date().toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+  await sendMail({
+    to: payment.user.email,
+
+    subject:
+      `Payment Receipt — ${receiptNo} | AskIT Technologies`,
+
+    html: `
+      <!DOCTYPE html>
+      <html>
+        <body
+          style="
+            margin:0;
+            padding:0;
+            background:#f1f5f9;
+            font-family:Arial,Helvetica,sans-serif;
+            color:#1f2937;
+          "
+        >
+          <table
+            role="presentation"
+            width="100%"
+            cellspacing="0"
+            cellpadding="0"
+            border="0"
+            style="
+              width:100%;
+              background:#f1f5f9;
+              padding:30px 15px;
+            "
+          >
+            <tr>
+              <td align="center">
+
+                <table
+                  role="presentation"
+                  width="620"
+                  cellspacing="0"
+                  cellpadding="0"
+                  border="0"
+                  style="
+                    width:100%;
+                    max-width:620px;
+                    background:#ffffff;
+                    border-radius:12px;
+                    overflow:hidden;
+                    box-shadow:0 4px 18px rgba(15,23,42,0.08);
+                  "
+                >
+
+                  <!-- HEADER -->
+                  <tr>
+                    <td
+                      style="
+                        background:#0b2868;
+                        padding:25px 30px;
+                      "
+                    >
+                      <div
+                        style="
+                          color:#ffffff;
+                          font-size:24px;
+                          font-weight:700;
+                          line-height:1.2;
+                        "
+                      >
+                        AskIT
+                        <span style="color:#f97316;">
+                          Technologies
+                        </span>
+                      </div>
+
+                      <div
+                        style="
+                          margin-top:7px;
+                          color:#cbd5e1;
+                          font-size:10px;
+                          letter-spacing:0.4px;
+                        "
+                      >
+                        LEARN TODAY | GROW TOMORROW | SUCCEED ALWAYS
+                      </div>
+                    </td>
+                  </tr>
+
+                  <!-- CONTENT -->
+                  <tr>
+                    <td
+                      style="
+                        padding:32px 30px;
+                      "
+                    >
+
+                      <h2
+                        style="
+                          margin:0 0 20px;
+                          color:#0b2868;
+                          font-size:22px;
+                        "
+                      >
+                        Payment Successful
+                      </h2>
+
+                      <p
+                        style="
+                          margin:0 0 16px;
+                          font-size:15px;
+                          line-height:1.7;
+                        "
+                      >
+                        Hi
+                        <strong>
+                          ${payment.user.fullName}
+                        </strong>,
+                      </p>
+
+                      <p
+                        style="
+                          margin:0 0 24px;
+                          font-size:14px;
+                          line-height:1.7;
+                          color:#475569;
+                        "
+                      >
+                        Your payment for
+                        <strong style="color:#1f2937;">
+                          ${payment.internship.title}
+                        </strong>
+                        has been successfully processed.
+                        Your official AskIT Technologies payment
+                        receipt is ready.
+                      </p>
+
+                      <!-- PAYMENT DETAILS -->
+                      <table
+                        role="presentation"
+                        width="100%"
+                        cellspacing="0"
+                        cellpadding="0"
+                        border="0"
+                        style="
+                          background:#f8fafc;
+                          border:1px solid #e2e8f0;
+                          border-radius:8px;
+                          margin:0 0 26px;
+                        "
+                      >
+
+                        <tr>
+                          <td
+                            style="
+                              padding:14px 16px;
+                              color:#64748b;
+                              font-size:13px;
+                              border-bottom:1px solid #e2e8f0;
+                            "
+                          >
+                            Receipt Number
+                          </td>
+
+                          <td
+                            align="right"
+                            style="
+                              padding:14px 16px;
+                              font-size:13px;
+                              font-weight:700;
+                              color:#0b2868;
+                              border-bottom:1px solid #e2e8f0;
+                            "
+                          >
+                            ${receiptNo}
+                          </td>
+                        </tr>
+
+                        <tr>
+                          <td
+                            style="
+                              padding:14px 16px;
+                              color:#64748b;
+                              font-size:13px;
+                              border-bottom:1px solid #e2e8f0;
+                            "
+                          >
+                            Program
+                          </td>
+
+                          <td
+                            align="right"
+                            style="
+                              padding:14px 16px;
+                              font-size:13px;
+                              font-weight:600;
+                              color:#1f2937;
+                              border-bottom:1px solid #e2e8f0;
+                            "
+                          >
+                            ${payment.internship.title}
+                            ${installmentLabel}
+                          </td>
+                        </tr>
+
+                        <tr>
+                          <td
+                            style="
+                              padding:14px 16px;
+                              color:#64748b;
+                              font-size:13px;
+                              border-bottom:1px solid #e2e8f0;
+                            "
+                          >
+                            Payment Date
+                          </td>
+
+                          <td
+                            align="right"
+                            style="
+                              padding:14px 16px;
+                              font-size:13px;
+                              color:#1f2937;
+                              border-bottom:1px solid #e2e8f0;
+                            "
+                          >
+                            ${formattedDate}
+                          </td>
+                        </tr>
+
+                        <tr>
+                          <td
+                            style="
+                              padding:16px;
+                              color:#64748b;
+                              font-size:14px;
+                            "
+                          >
+                            Amount Paid
+                          </td>
+
+                          <td
+                            align="right"
+                            style="
+                              padding:16px;
+                              font-size:18px;
+                              font-weight:700;
+                              color:#15803d;
+                            "
+                          >
+                            ₹${formattedAmount}
+                          </td>
+                        </tr>
+
+                      </table>
+
+                      <!-- DOWNLOAD BUTTON -->
+                      <div
+                        style="
+                          text-align:center;
+                          margin:30px 0;
+                        "
+                      >
+                        <a
+                          href="${fullDownloadUrl}"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style="
+                            display:inline-block;
+                            background:#f97316;
+                            color:#ffffff;
+                            text-decoration:none;
+                            padding:14px 30px;
+                            border-radius:8px;
+                            font-size:14px;
+                            font-weight:700;
+                          "
+                        >
+                          Download Payment Receipt
+                        </a>
+                      </div>
+
+                      <div
+                        style="
+                          background:#eff6ff;
+                          border-left:4px solid #0b2868;
+                          padding:14px 16px;
+                          margin-top:25px;
+                        "
+                      >
+                        <p
+                          style="
+                            margin:0;
+                            font-size:12px;
+                            line-height:1.6;
+                            color:#475569;
+                          "
+                        >
+                          For security, this receipt download
+                          link is temporary. If the link expires,
+                          sign in to your AskIT Technologies
+                          account and download the receipt again
+                          from
+                          <strong>Payment History</strong>.
+                        </p>
+                      </div>
+
+                      <p
+                        style="
+                          margin:28px 0 0;
+                          font-size:14px;
+                          line-height:1.7;
+                        "
+                      >
+                        Regards,
+                        <br />
+
+                        <strong
+                          style="
+                            color:#0b2868;
+                            font-size:15px;
+                          "
+                        >
+                          AskIT Technologies
+                        </strong>
+                      </p>
+
+                    </td>
+                  </tr>
+
+                  <!-- FOOTER -->
+                  <tr>
+                    <td
+                      align="center"
+                      style="
+                        background:#f8fafc;
+                        border-top:1px solid #e2e8f0;
+                        padding:20px 25px;
+                      "
+                    >
+                      <p
+                        style="
+                          margin:0 0 5px;
+                          color:#64748b;
+                          font-size:11px;
+                        "
+                      >
+                        This is an automatically generated
+                        payment confirmation from AskIT Technologies.
+                      </p>
+
+                      <p
+                        style="
+                          margin:0;
+                          color:#64748b;
+                          font-size:11px;
+                        "
+                      >
+                        Support:
+                        <strong>
+                          info@askittechnologies.com
+                        </strong>
+                      </p>
+                    </td>
+                  </tr>
+
+                </table>
+
+              </td>
+            </tr>
+          </table>
+        </body>
+      </html>
+    `,
+  });
+
+  // WhatsApp receipt
+  if (payment.user.mobileNumber) {
+    await sendWhatsApp({
+      to: payment.user.mobileNumber,
+
+      body: receiptWhatsAppMessage({
+        studentName:
+          payment.user.fullName,
+
+        internshipTitle:
+          payment.internship.title,
+
+        amount:
+          Number(payment.totalAmount),
+
+        receiptNo,
+
+        downloadUrl:
+          fullDownloadUrl,
+      }),
+    });
   }
+
+  // Record email delivery time only after the delivery block completes.
+  await prisma.receipt.update({
+    where: {
+      id: receipt.id,
+    },
+
+    data: {
+      emailedAt: new Date(),
+    },
+  });
+} catch (deliveryErr) {
+  // Receipt/email/WhatsApp failure must not change a successful payment.
+  console.error(
+    '[RECEIPT] Email/WhatsApp delivery failed:',
+    deliveryErr
+  );
+}
 
   await logActivity({
     actorId: payment.userId,

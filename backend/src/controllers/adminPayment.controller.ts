@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import { AppError } from '../middleware/error.middleware';
 import { paginate, buildMeta } from '../utils/helpers';
 import { logActivity } from '../services/audit.service';
+import { getReceiptSignedUrl, } from '../services/receipt.service';
 
 // GET /api/admin/payments — search + filter + paginate
 export async function listPayments(req: AuthRequest, res: Response, next: NextFunction) {
@@ -377,12 +378,79 @@ export async function recordOfflinePayment(req: AuthRequest, res: Response, next
     try {
       const { sendMail } = await import('../services/email.service');
       const { sendWhatsApp, receiptWhatsAppMessage } = await import('../services/whatsapp.service');
-      const fullDownloadUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}${fileUrl}`;
+      const fullDownloadUrl = await getReceiptSignedUrl(fileUrl);
 
       emailSent = await sendMail({
         to: user.email,
-        subject: `Payment Receipt — ${receiptNo}`,
-        html: `<p>Hi ${user.fullName},</p><p>Your payment of ₹${amount} for "${internship.title}" has been recorded.</p><p>Download your receipt: <a href="${fullDownloadUrl}">${fullDownloadUrl}</a></p>`,
+        subject: `Payment Receipt — ${receiptNo} | AskIT Technologies`,
+        html: `
+          <!DOCTYPE html>
+          <html>
+            <body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f1f5f9;padding:30px 15px;">
+                <tr>
+                  <td align="center">
+                    <table role="presentation" width="620" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:620px;background:#ffffff;border-radius:12px;overflow:hidden;">
+                      <tr>
+                        <td style="background:#0b2868;padding:25px 30px;">
+                          <div style="color:#ffffff;font-size:24px;font-weight:700;">
+                            AskIT <span style="color:#f97316;">Technologies</span>
+                          </div>
+                          <div style="margin-top:7px;color:#cbd5e1;font-size:10px;">
+                            LEARN TODAY | GROW TOMORROW | SUCCEED ALWAYS
+                          </div>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:32px 30px;">
+                          <h2 style="margin:0 0 20px;color:#0b2868;font-size:22px;">Payment Successful</h2>
+                          <p style="font-size:14px;line-height:1.7;">
+                            Hi <strong>${user.fullName}</strong>,
+                          </p>
+                          <p style="font-size:14px;line-height:1.7;color:#475569;">
+                            Your payment for <strong>${internship.title}</strong> has been recorded successfully.
+                          </p>
+
+                          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin:22px 0;">
+                            <tr>
+                              <td style="padding:14px 16px;color:#64748b;border-bottom:1px solid #e2e8f0;">Receipt Number</td>
+                              <td align="right" style="padding:14px 16px;font-weight:700;color:#0b2868;border-bottom:1px solid #e2e8f0;">${receiptNo}</td>
+                            </tr>
+                            <tr>
+                              <td style="padding:14px 16px;color:#64748b;border-bottom:1px solid #e2e8f0;">Program</td>
+                              <td align="right" style="padding:14px 16px;font-weight:600;border-bottom:1px solid #e2e8f0;">${internship.title}${installmentLabel}</td>
+                            </tr>
+                            <tr>
+                              <td style="padding:14px 16px;color:#64748b;">Amount Paid</td>
+                              <td align="right" style="padding:14px 16px;font-size:18px;font-weight:700;color:#15803d;">
+                                ₹${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          </table>
+
+                          <div style="text-align:center;margin:28px 0;">
+                            <a href="${fullDownloadUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#f97316;color:#ffffff;text-decoration:none;padding:13px 25px;border-radius:8px;font-weight:700;">
+                              Download Receipt
+                            </a>
+                          </div>
+
+                          <p style="font-size:12px;color:#64748b;line-height:1.6;">
+                            This secure download link is temporary. If it expires, sign in to your AskIT Technologies account and download the receipt again from Payment History.
+                          </p>
+
+                          <p style="margin-top:25px;">
+                            Regards,<br/>
+                            <strong style="color:#0b2868;">AskIT Technologies</strong>
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </body>
+          </html>
+        `,
       });
       if (user.mobileNumber) {
         whatsappSent = await sendWhatsApp({
@@ -422,46 +490,213 @@ export async function recordOfflinePayment(req: AuthRequest, res: Response, next
 }
 
 // POST /api/admin/payments/:id/resend-receipt
-export async function resendReceipt(req: AuthRequest, res: Response, next: NextFunction) {
+export async function resendReceipt(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
   try {
-    const payment = await prisma.payment.findUnique({ where: { id: req.params.id }, include: { receipt: true, user: true, internship: true } });
-    if (!payment || !payment.receipt) throw new AppError('Receipt not found for this payment', 404);
+    const payment =
+      await prisma.payment.findUnique({
+        where: {
+          id: req.params.id,
+        },
 
-    const { sendMail } = await import('../services/email.service');
-    const { sendWhatsApp, receiptWhatsAppMessage } = await import('../services/whatsapp.service');
-
-    const fullDownloadUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}${payment.receipt.fileUrl}`;
-
-    const emailSent = await sendMail({
-      to: payment.user.email,
-      subject: `Your ASK IT Receipt ${payment.receipt.receiptNo}`,
-      html: `<p>Hi ${payment.user.fullName},</p><p>Your payment receipt is available here: <a href="${fullDownloadUrl}">${fullDownloadUrl}</a></p>`,
-    });
-
-    let whatsappSent = false;
-    if (payment.user.mobileNumber) {
-      whatsappSent = await sendWhatsApp({
-        to: payment.user.mobileNumber,
-        body: receiptWhatsAppMessage({
-          studentName: payment.user.fullName,
-          internshipTitle: payment.internship.title,
-          amount: Number(payment.totalAmount),
-          receiptNo: payment.receipt.receiptNo,
-          downloadUrl: fullDownloadUrl,
-        }),
+        include: {
+          user: true,
+          internship: true,
+          receipt: true,
+        },
       });
+
+    if (
+      !payment ||
+      !payment.receipt
+    ) {
+      throw new AppError(
+        'Receipt not found',
+        404
+      );
     }
 
-    await prisma.receipt.update({ where: { id: payment.receipt.id }, data: { emailedAt: new Date() } });
+    if (
+      payment.status !==
+      'SUCCESS'
+    ) {
+      throw new AppError(
+        'Receipt is only available for successful payments',
+        400
+      );
+    }
 
-    // Be honest about what actually happened — SMTP/Twilio not being
-    // configured is common in local dev, and silently claiming success both
-    // times (when nothing left the server) is exactly what confused this
-    // flow before.
-    const parts: string[] = [];
-    parts.push(emailSent ? 'emailed' : 'logged (SMTP not configured — see backend/.env)');
-    parts.push(whatsappSent ? 'sent via WhatsApp' : 'WhatsApp not configured — see backend/.env');
-    res.json({ success: true, message: `Receipt ${parts.join(', ')}.`, data: { emailSent, whatsappSent } });
+    const receiptFileUrl =
+      payment.receipt.fileUrl;
+
+    if (!receiptFileUrl) {
+      throw new AppError(
+        'Receipt file is not available',
+        404
+      );
+    }
+
+    const downloadUrl =
+      await getReceiptSignedUrl(
+        receiptFileUrl
+      );
+
+    const {
+      sendMail,
+    } = await import(
+      '../services/email.service'
+    );
+
+    const sent =
+      await sendMail({
+        to:
+          payment.user.email,
+
+        subject:
+          `Your ASK IT Receipt ${payment.receipt.receiptNo}`,
+
+        html: `
+          <div style="
+            font-family:Arial,Helvetica,sans-serif;
+            max-width:640px;
+            margin:0 auto;
+            color:#1f2937;
+          ">
+
+            <div style="
+              background:#0b2868;
+              padding:22px 28px;
+              border-radius:12px 12px 0 0;
+              color:white;
+            ">
+              <div style="
+                font-size:22px;
+                font-weight:700;
+              ">
+                AskIT Technologies
+              </div>
+
+              <div style="
+                color:#cbd5e1;
+                font-size:11px;
+                margin-top:5px;
+              ">
+                LEARN TODAY | GROW TOMORROW | SUCCEED ALWAYS
+              </div>
+            </div>
+
+            <div style="
+              padding:28px;
+              border:1px solid #e2e8f0;
+              border-top:none;
+              border-radius:0 0 12px 12px;
+            ">
+
+              <h2 style="
+                color:#0b2868;
+                margin-top:0;
+              ">
+                Payment Receipt
+              </h2>
+
+              <p>
+                Hi
+                <strong>
+                  ${payment.user.fullName}
+                </strong>,
+              </p>
+
+              <p>
+                Your AskIT Technologies payment receipt is ready.
+              </p>
+
+              <p>
+                <strong>
+                  Receipt No:
+                </strong>
+                ${payment.receipt.receiptNo}
+              </p>
+
+              <p>
+                <strong>
+                  Program:
+                </strong>
+                ${payment.internship.title}
+              </p>
+
+              <div style="
+                text-align:center;
+                margin:28px 0;
+              ">
+                <a
+                  href="${downloadUrl}"
+                  target="_blank"
+                  style="
+                    display:inline-block;
+                    background:#f97316;
+                    color:#ffffff;
+                    padding:13px 25px;
+                    text-decoration:none;
+                    border-radius:8px;
+                    font-weight:700;
+                  "
+                >
+                  Download Receipt
+                </a>
+              </div>
+
+              <p style="
+                color:#64748b;
+                font-size:12px;
+              ">
+                This secure link is temporary.
+                If it expires, login to your account and
+                download the receipt from Payment History.
+              </p>
+
+              <p style="
+                margin-top:25px;
+              ">
+                Regards,
+                <br/>
+                <strong style="color:#0b2868;">
+                  AskIT Technologies
+                </strong>
+              </p>
+
+            </div>
+          </div>
+        `,
+      });
+
+    if (!sent) {
+      throw new AppError(
+        'Unable to send receipt email',
+        503
+      );
+    }
+
+    await prisma.receipt.update({
+      where: {
+        id:
+          payment.receipt.id,
+      },
+
+      data: {
+        emailedAt:
+          new Date(),
+      },
+    });
+
+    return res.json({
+      success: true,
+
+      message:
+        `Receipt sent successfully to ${payment.user.email}`,
+    });
   } catch (err) {
     next(err);
   }
