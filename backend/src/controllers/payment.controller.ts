@@ -5,7 +5,7 @@ import { AppError } from '../middleware/error.middleware';
 import { getPaymentGateway, getActivePaymentGateway } from '../services/paymentGateway';
 import { calculateInternshipPrice, getPaymentSettings, splitIntoInstallments, PricingResult } from '../services/pricing.service';
 import { getActiveManualPaymentAccounts } from '../services/paymentAccount.service';
-import { generateReceiptPdf } from '../services/receipt.service';
+import { generateReceiptPdf, getReceiptSignedUrl, } from '../services/receipt.service';
 import { generatePaymentNumber, generateReceiptNumber, generateRegistrationNumber } from '../utils/helpers';
 import { generateSecureToken } from '../utils/crypto';
 import { logActivity } from '../services/audit.service';
@@ -679,7 +679,7 @@ async function finalizePaymentSuccess(payment: any, gatewayPaymentId: string, ga
   try {
     const { sendMail } = await import('../services/email.service');
     const { sendWhatsApp, receiptWhatsAppMessage } = await import('../services/whatsapp.service');
-    const fullDownloadUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}${fileUrl}`;
+    const fullDownloadUrl = await getReceiptSignedUrl(fileUrl);
 
     await sendMail({
       to: payment.user.email,
@@ -833,14 +833,147 @@ export async function getPaymentById(req: AuthRequest, res: Response, next: Next
 }
 
 // GET /api/payments/receipts/:paymentId/download
-export async function downloadReceipt(req: AuthRequest, res: Response, next: NextFunction) {
+// GET /api/payments/receipts/:paymentId/download
+export async function downloadReceipt(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
   try {
-    const payment = await prisma.payment.findUnique({ where: { id: req.params.paymentId }, include: { receipt: true } });
-    if (!payment || !payment.receipt) throw new AppError('Receipt not found', 404);
-    const isOwner = payment.userId === req.user!.id;
-    const isAdmin = ['SUPER_ADMIN', 'SUB_ADMIN'].includes(req.user!.role);
-    if (!isOwner && !isAdmin) throw new AppError('You do not have access to this receipt', 403);
-    res.json({ success: true, data: { fileUrl: payment.receipt.fileUrl, receiptNo: payment.receipt.receiptNo } });
+    const payment =
+      await prisma.payment.findUnique({
+        where: {
+          id: req.params.paymentId,
+        },
+        include: {
+          receipt: true,
+          user: true,
+          internship: true,
+        },
+      });
+
+    if (!payment || !payment.receipt) {
+      throw new AppError(
+        'Receipt not found',
+        404
+      );
+    }
+
+    const isOwner =
+      payment.userId === req.user!.id;
+
+    const isAdmin = [
+      'SUPER_ADMIN',
+      'SUB_ADMIN',
+    ].includes(req.user!.role);
+
+    if (!isOwner && !isAdmin) {
+      throw new AppError(
+        'You do not have access to this receipt',
+        403
+      );
+    }
+
+    if (payment.status !== 'SUCCESS') {
+      throw new AppError(
+        'Receipt is only available for successful payments',
+        400
+      );
+    }
+
+    let objectPath =
+      payment.receipt.fileUrl;
+
+    /**
+     * OLD RECEIPTS
+     *
+     * Existing receipts currently contain paths such as:
+     *
+     * /uploads/receipts/ASKIT-RCPT-....pdf
+     *
+     * Those were generated on Cloud Run's temporary filesystem.
+     * Regenerate them automatically the first time the student
+     * presses Download Receipt.
+     */
+    if (
+      !objectPath ||
+      objectPath.startsWith('/uploads/')
+    ) {
+      console.log(
+        `[RECEIPT] Migrating legacy receipt ${payment.receipt.receiptNo}`
+      );
+
+      objectPath =
+        await generateReceiptPdf({
+          receiptNo:
+            payment.receipt.receiptNo,
+
+          verifyToken:
+            payment.receipt.verifyToken,
+
+          studentName:
+            payment.user.fullName,
+
+          studentEmail:
+            payment.user.email,
+
+          internshipTitle:
+            payment.internship.title,
+
+          baseAmount:
+            Number(payment.baseAmount),
+
+          discountAmount:
+            Number(payment.discountAmount),
+
+          taxAmount:
+            Number(payment.taxAmount),
+
+          totalAmount:
+            Number(payment.totalAmount),
+
+          gstPercentage:
+            Number(
+              payment.internship
+                .gstPercentage || 0
+            ),
+
+          method:
+            payment.method || null,
+
+          gatewayPaymentId:
+            payment.gatewayPaymentId ||
+            null,
+
+          paidAt:
+            payment.paidAt ||
+            payment.createdAt,
+        });
+
+      await prisma.receipt.update({
+        where: {
+          id: payment.receipt.id,
+        },
+        data: {
+          fileUrl: objectPath,
+        },
+      });
+    }
+
+    const signedUrl =
+      await getReceiptSignedUrl(
+        objectPath
+      );
+
+    return res.json({
+      success: true,
+      data: {
+        receiptNo:
+          payment.receipt.receiptNo,
+
+        fileUrl: signedUrl,
+      },
+    });
   } catch (err) {
     next(err);
   }

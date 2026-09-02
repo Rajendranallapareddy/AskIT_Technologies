@@ -117,7 +117,9 @@ export const paymentApi = {
   history: () => apiClient.get('/payments/history'),
   myRefunds: () => apiClient.get('/payments/refunds'),
   get: (id: string) => apiClient.get(`/payments/${id}`),
+
   downloadReceipt: (paymentId: string) => apiClient.get(`/payments/receipts/${paymentId}/download`),
+  
   requestRefund: (paymentId: string, reason: string) => apiClient.post(`/payments/${paymentId}/refund-request`, { reason }),
   verifyReceipt: (token: string) => apiClient.get(`/payments/verify-receipt/${token}`),
   validateCoupon: (internshipId: string, couponCode?: string) => apiClient.post('/public/coupons/validate', { internshipId, couponCode: couponCode || undefined }),
