@@ -359,15 +359,15 @@ export async function register(
 
 /**
  * POST /api/auth/verify-email
- */
-/**
- * POST /api/auth/verify-email
  *
  * Body:
  * {
- *   email: "...",
- *   otp: "123456"
+ *   email: string,
+ *   otp: string
  * }
+ *
+ * IMPORTANT:
+ * The actual User is created only after OTP verification succeeds.
  */
 export async function verifyEmail(
   req: Request,
@@ -375,54 +375,92 @@ export async function verifyEmail(
   next: NextFunction
 ) {
   try {
-    const { email, otp } = req.body;
-
-    const emailValidation =
-      validatePublicEmail(email);
+    const emailValidation = validatePublicEmail(
+      req.body.email
+    );
 
     if (!emailValidation.valid) {
       throw new AppError(
-        'Invalid email address.',
+        'Please enter a valid email address.',
         400
       );
     }
 
-    const normalizedEmail =
-      emailValidation.email;
+    const email = emailValidation.email;
 
-    const cleanOtp =
-      String(otp || '').trim();
+    const otp = String(
+      req.body.otp || ''
+    ).trim();
 
-    if (!/^\d{6}$/.test(cleanOtp)) {
+    if (!otp) {
       throw new AppError(
-        'Please enter the 6-digit verification OTP.',
+        'Please enter the verification OTP.',
         400
       );
     }
 
+    if (!/^\d{6}$/.test(otp)) {
+      throw new AppError(
+        'OTP must be exactly 6 digits.',
+        400
+      );
+    }
+
+    /*
+     * Registration data lives here until
+     * verification succeeds.
+     */
     const pending =
       await prisma.pendingRegistration.findUnique({
         where: {
-          email: normalizedEmail,
+          email,
         },
       });
 
     if (!pending) {
+      /*
+       * It may already have been successfully verified.
+       */
+      const existingUser =
+        await prisma.user.findUnique({
+          where: {
+            email,
+          },
+        });
+
+      if (
+        existingUser &&
+        existingUser.isEmailVerified
+      ) {
+        return res.json({
+          success: true,
+          message:
+            'Your email is already verified. Please login.',
+        });
+      }
+
       throw new AppError(
-        'No pending registration was found. Please register again.',
+        'Registration not found. Please register again.',
         404
       );
     }
 
+    /*
+     * Check expiration first.
+     */
     if (
-      pending.otpExpiresAt < new Date()
+      pending.otpExpiresAt.getTime() <
+      Date.now()
     ) {
       throw new AppError(
-        'Verification OTP has expired. Please request a new OTP.',
+        'Your verification OTP has expired. Please click Resend OTP to receive a new code.',
         400
       );
     }
 
+    /*
+     * Limit repeated invalid attempts.
+     */
     if (pending.otpAttempts >= 5) {
       throw new AppError(
         'Too many incorrect OTP attempts. Please request a new OTP.',
@@ -431,31 +469,45 @@ export async function verifyEmail(
     }
 
     const submittedHash =
-      hashOtp(cleanOtp);
+      hashOtp(otp);
 
-    const savedBuffer = Buffer.from(
-      pending.otpHash,
-      'hex'
-    );
-
-    const submittedBuffer = Buffer.from(
-      submittedHash,
-      'hex'
-    );
-
-    const validOtp =
-      savedBuffer.length ===
-        submittedBuffer.length &&
-      crypto.timingSafeEqual(
-        savedBuffer,
-        submittedBuffer
+    const submittedBuffer =
+      Buffer.from(
+        submittedHash,
+        'hex'
       );
 
+    const storedBuffer =
+      Buffer.from(
+        pending.otpHash,
+        'hex'
+      );
+
+    let validOtp = false;
+
+    /*
+     * timingSafeEqual requires equal length buffers.
+     */
+    if (
+      submittedBuffer.length ===
+      storedBuffer.length
+    ) {
+      validOtp =
+        crypto.timingSafeEqual(
+          submittedBuffer,
+          storedBuffer
+        );
+    }
+
     if (!validOtp) {
+      const attempts =
+        pending.otpAttempts + 1;
+
       await prisma.pendingRegistration.update({
         where: {
           id: pending.id,
         },
+
         data: {
           otpAttempts: {
             increment: 1,
@@ -463,20 +515,39 @@ export async function verifyEmail(
         },
       });
 
+      const remaining =
+        Math.max(
+          0,
+          5 - attempts
+        );
+
+      if (remaining === 0) {
+        throw new AppError(
+          'Incorrect OTP. Too many failed attempts. Please request a new OTP.',
+          429
+        );
+      }
+
       throw new AppError(
-        'Incorrect verification OTP.',
+        `Incorrect OTP. Please check the code and try again. ${remaining} attempt${
+          remaining === 1 ? '' : 's'
+        } remaining.`,
         400
       );
     }
 
     /*
-     * Re-check real users immediately before account creation.
+     * Re-check before creating User in case another
+     * request completed verification simultaneously.
      */
     const existingUser =
       await prisma.user.findFirst({
         where: {
           OR: [
-            { email: pending.email },
+            {
+              email:
+                pending.email,
+            },
             {
               mobileNumber:
                 pending.mobileNumber,
@@ -486,23 +557,38 @@ export async function verifyEmail(
       });
 
     if (existingUser) {
-      await prisma.pendingRegistration.delete({
-        where: {
-          id: pending.id,
-        },
-      });
+      /*
+       * If same email already became verified,
+       * remove stale pending registration.
+       */
+      if (
+        existingUser.email ===
+        pending.email
+      ) {
+        await prisma.pendingRegistration.delete({
+          where: {
+            id: pending.id,
+          },
+        });
+
+        return res.json({
+          success: true,
+          message:
+            'Your email is already verified. Please login.',
+        });
+      }
 
       throw new AppError(
-        'An account with this email or mobile number already exists.',
+        'This mobile number is already associated with another account.',
         409
       );
     }
 
     /*
-     * ACCOUNT CREATION HAPPENS ONLY HERE,
-     * after successful OTP verification.
+     * Create the real User and remove PendingRegistration
+     * atomically.
      */
-    const verifiedUser =
+    const user =
       await prisma.$transaction(
         async (tx) => {
           const createdUser =
@@ -510,37 +596,61 @@ export async function verifyEmail(
               data: {
                 fullName:
                   pending.fullName,
+
                 email:
                   pending.email,
+
                 mobileNumber:
                   pending.mobileNumber,
+
                 passwordHash:
                   pending.passwordHash,
+
                 gender:
                   pending.gender,
+
                 dateOfBirth:
                   pending.dateOfBirth,
+
                 collegeName:
                   pending.collegeName,
+
                 university:
                   pending.university,
+
                 degree:
                   pending.degree,
+
                 branch:
                   pending.branch,
+
                 graduationYear:
                   pending.graduationYear,
+
                 address:
                   pending.address,
+
                 city:
                   pending.city,
+
                 state:
                   pending.state,
+
                 country:
                   pending.country,
-                role: 'USER',
-                isEmailVerified: true,
-                emailVerifyToken: null,
+
+                role:
+                  'USER',
+
+                isActive:
+                  true,
+
+                isEmailVerified:
+                  true,
+
+                emailVerifyToken:
+                  null,
+
                 emailVerifyTokenExpiry:
                   null,
               },
@@ -556,12 +666,21 @@ export async function verifyEmail(
         }
       );
 
+    /*
+     * Notifications must not break verification.
+     */
     void notifyAdmins({
       type: 'REGISTRATION',
-      title: 'New Student Registered',
+
+      title:
+        'New Student Registered',
+
       message:
-        `${verifiedUser.fullName} created and verified a new AskIT Technologies account. Email: ${verifiedUser.email}`,
-      link: '/admin/users/students',
+        `${user.fullName} created and verified a new AskIT Technologies account. Email: ${user.email}`,
+
+      link:
+        '/admin/users/students',
+
       push: true,
       email: true,
       whatsapp: false,
@@ -573,12 +692,21 @@ export async function verifyEmail(
     });
 
     void notifyUser({
-      userId: verifiedUser.id,
-      type: 'REGISTRATION',
-      title: 'Welcome to AskIT Technologies',
+      userId:
+        user.id,
+
+      type:
+        'REGISTRATION',
+
+      title:
+        'Welcome to AskIT Technologies',
+
       message:
-        'Your email has been verified and your account has been created successfully.',
-      link: '/dashboard',
+        'Your email has been verified and your account is ready.',
+
+      link:
+        '/dashboard',
+
       push: true,
       email: false,
       whatsapp: false,
@@ -590,11 +718,17 @@ export async function verifyEmail(
     });
 
     void logActivity({
-      actorId: verifiedUser.id,
-      action: 'USER_REGISTER',
+      actorId:
+        user.id,
+
+      action:
+        'EMAIL_VERIFIED',
+
       description:
-        `${verifiedUser.fullName} completed OTP verification and created an account`,
-      ipAddress: req.ip,
+        `${user.fullName} verified their email address`,
+
+      ipAddress:
+        req.ip,
     }).catch((error) => {
       console.error(
         '[VERIFY EMAIL] Activity log error:',
@@ -602,21 +736,25 @@ export async function verifyEmail(
       );
     });
 
-    return res.status(201).json({
+    return res.json({
       success: true,
+
       message:
-        'Email verified successfully. Your account has now been created. You can login.',
-      data: {
-        user: sanitizeUser(verifiedUser),
-      },
+        'Email verified successfully. Your account has been created. You can now login.',
     });
   } catch (err) {
     next(err);
   }
 }
 
+
 /**
  * POST /api/auth/resend-verification-otp
+ *
+ * Body:
+ * {
+ *   email: string
+ * }
  */
 export async function resendVerificationOtp(
   req: Request,
@@ -639,6 +777,10 @@ export async function resendVerificationOtp(
     const email =
       emailValidation.email;
 
+    /*
+     * Resend must use PendingRegistration,
+     * NOT User.
+     */
     const pending =
       await prisma.pendingRegistration.findUnique({
         where: {
@@ -649,62 +791,81 @@ export async function resendVerificationOtp(
     if (!pending) {
       const existingUser =
         await prisma.user.findUnique({
-          where: { email },
+          where: {
+            email,
+          },
         });
 
-      if (existingUser) {
+      if (
+        existingUser &&
+        existingUser.isEmailVerified
+      ) {
         throw new AppError(
-          'This email is already registered. Please login.',
+          'This email is already verified. Please login.',
           400
         );
       }
 
       throw new AppError(
-        'No pending registration was found for this email. Please register again.',
+        'Pending registration was not found. Please register again.',
         404
       );
     }
 
-    const otp = generateOtp();
+    const otp =
+      generateOtp();
 
+    const otpHash =
+      hashOtp(otp);
+
+    const otpExpiresAt =
+      new Date(
+        Date.now() +
+          OTP_EXPIRY_MS
+      );
+
+    /*
+     * New OTP also resets incorrect-attempt count.
+     */
     await prisma.pendingRegistration.update({
       where: {
         id: pending.id,
       },
+
       data: {
-        otpHash: hashOtp(otp),
-        otpExpiresAt: new Date(
-          Date.now() + OTP_EXPIRY_MS
-        ),
+        otpHash,
+        otpExpiresAt,
         otpAttempts: 0,
       },
     });
 
-    const sent = await sendMail({
-      to: email,
-      subject:
-        'AskIT Technologies - New Verification OTP',
-      html: registrationOtpEmailTemplate(
-        pending.fullName,
-        otp
-      ),
-    });
+    const sent =
+      await sendMail({
+        to:
+          pending.email,
+
+        subject:
+          'AskIT Technologies - New Verification OTP',
+
+        html:
+          registrationOtpEmailTemplate(
+            pending.fullName,
+            otp
+          ),
+      });
 
     if (!sent) {
       throw new AppError(
-        'Unable to send OTP right now. Please try again shortly.',
+        'We could not send the OTP right now. Please try again shortly.',
         503
       );
     }
 
     return res.json({
       success: true,
+
       message:
         'A new verification OTP has been sent to your email.',
-      data: {
-        email,
-        otpExpiresIn: 600,
-      },
     });
   } catch (err) {
     next(err);

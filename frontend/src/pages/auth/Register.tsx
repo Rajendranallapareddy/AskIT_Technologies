@@ -294,13 +294,6 @@ export default function Register() {
     setIsLoading(true);
 
     try {
-      /*
-       * IMPORTANT:
-       * The backend must NOT create a User here.
-       *
-       * It should create/update only a
-       * PendingRegistration and send OTP.
-       */
       await authApi.register({
         ...form,
 
