@@ -2,6 +2,15 @@ import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
+import {
+  validatePublicEmail,
+} from '../utils/emailValidation';
+
+import {
+  registrationOtpEmailTemplate,
+  passwordResetOtpEmailTemplate,
+} from '../services/otpEmail.service';
+
 import { prisma } from '../config/db';
 import {
   signAccessToken,
@@ -33,6 +42,27 @@ import {
   notifyAdmins,
   notifyUser,
 } from '../services/notify.service';
+
+function generateOtp(): string {
+  return crypto
+    .randomInt(
+      100000,
+      1000000
+    )
+    .toString();
+}
+
+function hashOtp(
+  otp: string
+): string {
+  return crypto
+    .createHash('sha256')
+    .update(otp)
+    .digest('hex');
+}
+
+const OTP_EXPIRY_MS =
+  10 * 60 * 1000;
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -93,6 +123,12 @@ async function prepareUserForResponse(user: any) {
 /**
  * POST /api/auth/register
  */
+/**
+ * POST /api/auth/register
+ *
+ * Creates an unverified student account
+ * and sends a 6-digit email OTP.
+ */
 export async function register(
   req: Request,
   res: Response,
@@ -117,29 +153,80 @@ export async function register(
       country,
     } = req.body;
 
-    const normalizedEmail = String(email)
-      .trim()
-      .toLowerCase();
+    /*
+     * Validate email before creating anything.
+     */
+    const emailValidation =
+      validatePublicEmail(
+        email
+      );
 
-    const normalizedMobile = String(mobileNumber)
-      .trim();
+    if (
+      !emailValidation.valid
+    ) {
+      throw new AppError(
+        emailValidation.message ||
+          'Please enter a valid email address.',
+        400
+      );
+    }
 
-    const existing = await prisma.user.findFirst({
-      where: {
-        OR: [
-          {
-            email: normalizedEmail,
-          },
-          {
-            mobileNumber: normalizedMobile,
-          },
-        ],
-      },
-    });
+    const normalizedEmail =
+      emailValidation.email;
 
-    if (existing) {
+    const normalizedMobile =
+      String(
+        mobileNumber || ''
+      ).trim();
+
+    if (
+      !fullName ||
+      !normalizedMobile ||
+      !password
+    ) {
+      throw new AppError(
+        'Full name, email, mobile number and password are required.',
+        400
+      );
+    }
+
+    if (
+      String(password).length <
+      8
+    ) {
+      throw new AppError(
+        'Password must contain at least 8 characters.',
+        400
+      );
+    }
+
+    const existing =
+      await prisma.user.findFirst({
+        where: {
+          OR: [
+            {
+              email:
+                normalizedEmail,
+            },
+            {
+              mobileNumber:
+                normalizedMobile,
+            },
+          ],
+        },
+      });
+
+    /*
+     * Existing verified account:
+     * don't allow registration again.
+     */
+    if (
+      existing &&
+      existing.isEmailVerified
+    ) {
       if (
-        existing.email.toLowerCase() ===
+        existing.email
+          .toLowerCase() ===
         normalizedEmail
       ) {
         throw new AppError(
@@ -154,171 +241,232 @@ export async function register(
       );
     }
 
-    const passwordHash = await bcrypt.hash(
-      password,
-      12
-    );
-
-    const emailVerifyToken = crypto
-      .randomBytes(32)
-      .toString('hex');
-
-    const user = await prisma.user.create({
-      data: {
-        fullName: String(fullName).trim(),
-
-        email: normalizedEmail,
-
-        mobileNumber: normalizedMobile,
-
-        passwordHash,
-
-        gender,
-
-        dateOfBirth,
-
-        collegeName: collegeName?.trim(),
-
-        university: university?.trim(),
-
-        degree: degree?.trim(),
-
-        branch: branch?.trim(),
-
-        graduationYear: graduationYear
-          ? Number(graduationYear)
-          : undefined,
-
-        address: address?.trim(),
-
-        city: city?.trim(),
-
-        state: state?.trim(),
-
-        country:
-          country?.trim() || 'India',
-
-        emailVerifyToken,
-
-        role: 'USER',
-      },
-    });
-
-    const frontendUrl =
-      process.env.FRONTEND_URL ||
-      'http://localhost:5173';
-
-    const verifyLink =
-      `${frontendUrl}/verify-email?token=${emailVerifyToken}`;
-
-    /**
-     * Do NOT wait for SMTP.
-     *
-     * Account creation should succeed immediately,
-     * even if email delivery temporarily fails.
+    /*
+     * If an unfinished/unverified account exists,
+     * we can issue it a fresh OTP rather than
+     * permanently locking the email/mobile number.
      */
-    void sendMail({
-      to: normalizedEmail,
+    if (
+      existing &&
+      existing.email !==
+        normalizedEmail
+    ) {
+      throw new AppError(
+        'This mobile number is already being used by another account.',
+        409
+      );
+    }
 
-      subject:
-        'Welcome to AskIT Technologies - Verify Your Email',
+    const otp =
+      generateOtp();
 
-      html: verificationEmailTemplate(
-        fullName,
-        verifyLink
-      ),
-    })
-      .then((sent) => {
-        if (sent) {
-          console.log(
-            `[REGISTER] Verification email sent to ${normalizedEmail}`
-          );
-        } else {
-          console.warn(
-            `[REGISTER] Account created but verification email was not sent to ${normalizedEmail}`
-          );
-        }
-      })
-      .catch((error) => {
-        console.error(
-          '[REGISTER] Verification email error:',
-          error
-        );
+    const otpHash =
+      hashOtp(otp);
+
+    const otpExpiry =
+      new Date(
+        Date.now() +
+          OTP_EXPIRY_MS
+      );
+
+    const passwordHash =
+      await bcrypt.hash(
+        String(password),
+        12
+      );
+
+    let user;
+
+    if (existing) {
+      user =
+        await prisma.user.update({
+          where: {
+            id: existing.id,
+          },
+
+          data: {
+            fullName:
+              String(
+                fullName
+              ).trim(),
+
+            mobileNumber:
+              normalizedMobile,
+
+            passwordHash,
+
+            gender:
+              gender || null,
+
+            dateOfBirth:
+              dateOfBirth ||
+              null,
+
+            collegeName:
+              collegeName
+                ?.trim() ||
+              null,
+
+            university:
+              university
+                ?.trim() ||
+              null,
+
+            degree:
+              degree?.trim() ||
+              null,
+
+            branch:
+              branch?.trim() ||
+              null,
+
+            graduationYear:
+              graduationYear
+                ? Number(
+                    graduationYear
+                  )
+                : null,
+
+            address:
+              address?.trim() ||
+              null,
+
+            city:
+              city?.trim() ||
+              null,
+
+            state:
+              state?.trim() ||
+              null,
+
+            country:
+              country?.trim() ||
+              'India',
+
+            isEmailVerified:
+              false,
+
+            emailVerifyToken:
+              otpHash,
+
+            emailVerifyTokenExpiry:
+              otpExpiry,
+          },
+        });
+    } else {
+      user =
+        await prisma.user.create({
+          data: {
+            fullName:
+              String(
+                fullName
+              ).trim(),
+
+            email:
+              normalizedEmail,
+
+            mobileNumber:
+              normalizedMobile,
+
+            passwordHash,
+
+            gender,
+
+            dateOfBirth,
+
+            collegeName:
+              collegeName
+                ?.trim(),
+
+            university:
+              university
+                ?.trim(),
+
+            degree:
+              degree?.trim(),
+
+            branch:
+              branch?.trim(),
+
+            graduationYear:
+              graduationYear
+                ? Number(
+                    graduationYear
+                  )
+                : undefined,
+
+            address:
+              address?.trim(),
+
+            city:
+              city?.trim(),
+
+            state:
+              state?.trim(),
+
+            country:
+              country?.trim() ||
+              'India',
+
+            isEmailVerified:
+              false,
+
+            emailVerifyToken:
+              otpHash,
+
+            emailVerifyTokenExpiry:
+              otpExpiry,
+
+            role: 'USER',
+          },
+        });
+    }
+
+    /*
+     * Await this email.
+     * Registration depends on the user receiving
+     * the OTP, so unlike general notifications
+     * we should know whether mail delivery failed.
+     */
+    const sent =
+      await sendMail({
+        to: normalizedEmail,
+
+        subject:
+          'AskIT Technologies - Your Verification OTP',
+
+        html:
+          registrationOtpEmailTemplate(
+            String(
+              fullName
+            ).trim(),
+            otp
+          ),
       });
 
-    /**
-     * Activity logging should not delay registration.
-     */
-    void logActivity({
-      actorId: user.id,
-
-      action: 'USER_REGISTER',
-
-      description:
-        `${fullName} registered a new account`,
-
-      ipAddress: req.ip,
-    }).catch((error) => {
+    if (!sent) {
       console.error(
-        '[REGISTER] Activity log error:',
-        error
+        `[REGISTER OTP] Unable to send OTP to ${normalizedEmail}`
       );
-    });
-
-    /**
-     * Notify Super Admin + active Sub Admins about the new registration.
-     * Notification delivery is best-effort and must not block registration.
-     */
-    void notifyAdmins({
-      type: 'REGISTRATION',
-      title: 'New Student Registered',
-      message:
-        `${user.fullName} created a new AskIT Technologies account. ` +
-        `Email: ${user.email}${
-          user.mobileNumber
-            ? ` | Mobile: ${user.mobileNumber}`
-            : ''
-        }`,
-      link: '/admin/users/students',
-      push: true,
-      email: true,
-      whatsapp: false,
-    }).catch((error) => {
-      console.error(
-        '[REGISTER] Admin notification error:',
-        error
-      );
-    });
-
-    /**
-     * Store a welcome notification for the new student.
-     * Push will also be attempted if this user already has a valid device
-     * subscription; otherwise the in-app notification remains available.
-     */
-    void notifyUser({
-      userId: user.id,
-      type: 'REGISTRATION',
-      title: 'Welcome to AskIT Technologies',
-      message:
-        'Your AskIT Technologies account has been created successfully.',
-      link: '/dashboard',
-      push: true,
-      email: false,
-      whatsapp: false,
-    }).catch((error) => {
-      console.error(
-        '[REGISTER] Student notification error:',
-        error
-      );
-    });
+    }
 
     return res.status(201).json({
       success: true,
 
-      message:
-        'Account created successfully. Please login.',
+      message: sent
+        ? 'Verification OTP has been sent to your email. Enter the OTP to complete registration.'
+        : 'Registration started, but we could not send the OTP. Please use Resend OTP.',
 
-      data: sanitizeUser(user),
+      data: {
+        email:
+          normalizedEmail,
+
+        requiresOtp:
+          true,
+
+        otpExpiresIn:
+          600,
+      },
     });
   } catch (err) {
     next(err);
@@ -329,27 +477,285 @@ export async function register(
 /**
  * POST /api/auth/verify-email
  */
+/**
+ * POST /api/auth/verify-email
+ *
+ * Body:
+ * {
+ *   email: "...",
+ *   otp: "123456"
+ * }
+ */
 export async function verifyEmail(
   req: Request,
   res: Response,
   next: NextFunction
 ) {
   try {
-    const { token } = req.body;
+    const {
+      email,
+      otp,
+    } = req.body;
+
+    const emailValidation =
+      validatePublicEmail(
+        email
+      );
+
+    if (
+      !emailValidation.valid
+    ) {
+      throw new AppError(
+        'Invalid email address.',
+        400
+      );
+    }
+
+    const normalizedEmail =
+      emailValidation.email;
+
+    const cleanOtp =
+      String(otp || '')
+        .trim();
+
+    if (
+      !/^\d{6}$/.test(
+        cleanOtp
+      )
+    ) {
+      throw new AppError(
+        'Please enter the 6-digit verification OTP.',
+        400
+      );
+    }
 
     const user =
-      await prisma.user.findFirst({
+      await prisma.user.findUnique({
         where: {
-          emailVerifyToken: token,
+          email:
+            normalizedEmail,
         },
       });
 
     if (!user) {
       throw new AppError(
-        'Invalid or expired verification token',
+        'Invalid email or OTP.',
         400
       );
     }
+
+    if (
+      user.isEmailVerified
+    ) {
+      return res.json({
+        success: true,
+
+        message:
+          'Your email is already verified. You can login.',
+      });
+    }
+
+    if (
+      !user.emailVerifyToken ||
+      !user.emailVerifyTokenExpiry
+    ) {
+      throw new AppError(
+        'Verification OTP is not available. Please request a new OTP.',
+        400
+      );
+    }
+
+    if (
+      user.emailVerifyTokenExpiry <
+      new Date()
+    ) {
+      throw new AppError(
+        'Verification OTP has expired. Please request a new OTP.',
+        400
+      );
+    }
+
+    const otpHash =
+      hashOtp(
+        cleanOtp
+      );
+
+    const validOtp =
+      crypto.timingSafeEqual(
+        Buffer.from(
+          otpHash,
+          'hex'
+        ),
+        Buffer.from(
+          user.emailVerifyToken,
+          'hex'
+        )
+      );
+
+    if (!validOtp) {
+      throw new AppError(
+        'Incorrect verification OTP.',
+        400
+      );
+    }
+
+    const verifiedUser =
+      await prisma.user.update({
+        where: {
+          id: user.id,
+        },
+
+        data: {
+          isEmailVerified:
+            true,
+
+          emailVerifyToken:
+            null,
+
+          emailVerifyTokenExpiry:
+            null,
+        },
+      });
+
+    /*
+     * Only after OTP verification do admins receive
+     * the "new student registered" notification.
+     */
+    void notifyAdmins({
+      type: 'REGISTRATION',
+
+      title:
+        'New Student Registered',
+
+      message:
+        `${verifiedUser.fullName} created and verified a new AskIT Technologies account. Email: ${verifiedUser.email}`,
+
+      link:
+        '/admin/users/students',
+
+      push: true,
+      email: true,
+      whatsapp: false,
+    }).catch(
+      (error) => {
+        console.error(
+          '[VERIFY EMAIL] Admin notification error:',
+          error
+        );
+      }
+    );
+
+    void notifyUser({
+      userId:
+        verifiedUser.id,
+
+      type:
+        'REGISTRATION',
+
+      title:
+        'Welcome to AskIT Technologies',
+
+      message:
+        'Your email has been verified and your account is ready.',
+
+      link:
+        '/dashboard',
+
+      push: true,
+      email: false,
+      whatsapp: false,
+    }).catch(
+      (error) => {
+        console.error(
+          '[VERIFY EMAIL] Welcome notification error:',
+          error
+        );
+      }
+    );
+
+    void logActivity({
+      actorId:
+        verifiedUser.id,
+
+      action:
+        'EMAIL_VERIFIED',
+
+      description:
+        `${verifiedUser.fullName} verified their email address`,
+
+      ipAddress:
+        req.ip,
+    }).catch(
+      (error) => {
+        console.error(
+          '[VERIFY EMAIL] Activity log error:',
+          error
+        );
+      }
+    );
+
+    return res.json({
+      success: true,
+
+      message:
+        'Email verified successfully. Your account is ready. You can now login.',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/auth/resend-verification-otp
+ */
+export async function resendVerificationOtp(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const emailValidation =
+      validatePublicEmail(
+        req.body.email
+      );
+
+    if (
+      !emailValidation.valid
+    ) {
+      throw new AppError(
+        'Please enter a valid email address.',
+        400
+      );
+    }
+
+    const email =
+      emailValidation.email;
+
+    const user =
+      await prisma.user.findUnique({
+        where: {
+          email,
+        },
+      });
+
+    if (!user) {
+      throw new AppError(
+        'Registration was not found for this email.',
+        404
+      );
+    }
+
+    if (
+      user.isEmailVerified
+    ) {
+      throw new AppError(
+        'This email is already verified. Please login.',
+        400
+      );
+    }
+
+    const otp =
+      generateOtp();
 
     await prisma.user.update({
       where: {
@@ -357,21 +763,49 @@ export async function verifyEmail(
       },
 
       data: {
-        isEmailVerified: true,
-        emailVerifyToken: null,
+        emailVerifyToken:
+          hashOtp(otp),
+
+        emailVerifyTokenExpiry:
+          new Date(
+            Date.now() +
+              OTP_EXPIRY_MS
+          ),
       },
     });
+
+    const sent =
+      await sendMail({
+        to: email,
+
+        subject:
+          'AskIT Technologies - New Verification OTP',
+
+        html:
+          registrationOtpEmailTemplate(
+            user.fullName,
+            otp
+          ),
+      });
+
+    if (!sent) {
+      throw new AppError(
+        'Unable to send OTP right now. Please try again shortly.',
+        503
+      );
+    }
 
     return res.json({
       success: true,
 
       message:
-        'Email verified successfully. You can now log in.',
+        'A new verification OTP has been sent to your email.',
     });
   } catch (err) {
     next(err);
   }
 }
+
 
 /**
  * POST /api/auth/login
@@ -431,6 +865,15 @@ export async function login(
         403
       );
     }
+
+    if (
+  !user.isEmailVerified
+) {
+  throw new AppError(
+    'Please verify your email using the OTP before logging in.',
+    403
+  );
+}
 
     const accessToken =
       signAccessToken({
@@ -623,6 +1066,8 @@ export async function logout(
 
 /**
  * POST /api/auth/forgot-password
+ *
+ * Sends password-reset OTP.
  */
 export async function forgotPassword(
   req: Request,
@@ -630,10 +1075,28 @@ export async function forgotPassword(
   next: NextFunction
 ) {
   try {
+    const emailValidation =
+      validatePublicEmail(
+        req.body.email
+      );
+
+    /*
+     * Keep a generic response to avoid
+     * exposing registered email addresses.
+     */
+    if (
+      !emailValidation.valid
+    ) {
+      return res.json({
+        success: true,
+
+        message:
+          'If this email is registered, a password reset OTP has been sent.',
+      });
+    }
+
     const email =
-      String(req.body.email || '')
-        .trim()
-        .toLowerCase();
+      emailValidation.email;
 
     const user =
       await prisma.user.findUnique({
@@ -642,23 +1105,20 @@ export async function forgotPassword(
         },
       });
 
-    /**
-     * Always return the same response so users cannot
-     * discover which email addresses are registered.
-     */
-    if (!user) {
+    if (
+      !user ||
+      !user.isActive
+    ) {
       return res.json({
         success: true,
 
         message:
-          'If that email exists, a reset link has been sent.',
+          'If this email is registered, a password reset OTP has been sent.',
       });
     }
 
-    const resetToken =
-      crypto
-        .randomBytes(32)
-        .toString('hex');
+    const otp =
+      generateOtp();
 
     await prisma.user.update({
       where: {
@@ -666,49 +1126,42 @@ export async function forgotPassword(
       },
 
       data: {
-        resetToken,
+        resetToken:
+          hashOtp(otp),
 
         resetTokenExpiry:
           new Date(
             Date.now() +
-              60 * 60 * 1000
+              OTP_EXPIRY_MS
           ),
       },
     });
 
-    const resetLink =
-      `${
-        process.env.FRONTEND_URL ||
-        'http://localhost:5173'
-      }/reset-password?token=${resetToken}`;
+    const sent =
+      await sendMail({
+        to: email,
 
-    /**
-     * Do not allow SMTP failure to expose internal
-     * errors or make the request hang unnecessarily.
-     */
-    void sendMail({
-      to: email,
+        subject:
+          'AskIT Technologies - Password Reset OTP',
 
-      subject:
-        'Reset your AskIT Technologies password',
+        html:
+          passwordResetOtpEmailTemplate(
+            user.fullName,
+            otp
+          ),
+      });
 
-      html:
-        resetPasswordEmailTemplate(
-          user.fullName,
-          resetLink
-        ),
-    }).catch((error) => {
+    if (!sent) {
       console.error(
-        '[PASSWORD RESET] Email error:',
-        error
+        `[PASSWORD RESET] OTP email could not be sent to ${email}`
       );
-    });
+    }
 
     return res.json({
       success: true,
 
       message:
-        'If that email exists, a reset link has been sent.',
+        'If this email is registered, a password reset OTP has been sent.',
     });
   } catch (err) {
     next(err);
@@ -717,6 +1170,13 @@ export async function forgotPassword(
 
 /**
  * POST /api/auth/reset-password
+ *
+ * Body:
+ * {
+ *   email,
+ *   otp,
+ *   password
+ * }
  */
 export async function resetPassword(
   req: Request,
@@ -725,31 +1185,107 @@ export async function resetPassword(
 ) {
   try {
     const {
-      token,
+      email,
+      otp,
       password,
     } = req.body;
 
-    const user =
-      await prisma.user.findFirst({
-        where: {
-          resetToken: token,
+    const emailValidation =
+      validatePublicEmail(
+        email
+      );
 
-          resetTokenExpiry: {
-            gt: new Date(),
-          },
+    if (
+      !emailValidation.valid
+    ) {
+      throw new AppError(
+        'Invalid email or OTP.',
+        400
+      );
+    }
+
+    const cleanOtp =
+      String(otp || '')
+        .trim();
+
+    if (
+      !/^\d{6}$/.test(
+        cleanOtp
+      )
+    ) {
+      throw new AppError(
+        'Please enter the 6-digit OTP.',
+        400
+      );
+    }
+
+    if (
+      !password ||
+      String(password).length <
+        8
+    ) {
+      throw new AppError(
+        'New password must contain at least 8 characters.',
+        400
+      );
+    }
+
+    const user =
+      await prisma.user.findUnique({
+        where: {
+          email:
+            emailValidation.email,
         },
       });
 
-    if (!user) {
+    if (
+      !user ||
+      !user.resetToken ||
+      !user.resetTokenExpiry
+    ) {
       throw new AppError(
-        'Invalid or expired reset token',
+        'Invalid or expired OTP.',
+        400
+      );
+    }
+
+    if (
+      user.resetTokenExpiry <
+      new Date()
+    ) {
+      throw new AppError(
+        'Password reset OTP has expired. Please request a new OTP.',
+        400
+      );
+    }
+
+    const submittedHash =
+      hashOtp(
+        cleanOtp
+      );
+
+    const validOtp =
+      crypto.timingSafeEqual(
+        Buffer.from(
+          submittedHash,
+          'hex'
+        ),
+        Buffer.from(
+          user.resetToken,
+          'hex'
+        )
+      );
+
+    if (!validOtp) {
+      throw new AppError(
+        'Incorrect password reset OTP.',
         400
       );
     }
 
     const passwordHash =
       await bcrypt.hash(
-        password,
+        String(password),
         12
       );
 
@@ -760,33 +1296,41 @@ export async function resetPassword(
 
       data: {
         passwordHash,
-        resetToken: null,
-        resetTokenExpiry: null,
+
+        resetToken:
+          null,
+
+        resetTokenExpiry:
+          null,
       },
     });
 
     void logActivity({
-      actorId: user.id,
+      actorId:
+        user.id,
 
       action:
         'PASSWORD_RESET',
 
       description:
-        `${user.fullName} reset their password`,
+        `${user.fullName} reset their password using email OTP`,
 
-      ipAddress: req.ip,
-    }).catch((error) => {
-      console.error(
-        '[PASSWORD RESET] Activity log error:',
-        error
-      );
-    });
+      ipAddress:
+        req.ip,
+    }).catch(
+      (error) => {
+        console.error(
+          '[PASSWORD RESET] Activity log error:',
+          error
+        );
+      }
+    );
 
     return res.json({
       success: true,
 
       message:
-        'Password reset successfully. You can now log in.',
+        'Password changed successfully. You can now login with your new password.',
     });
   } catch (err) {
     next(err);

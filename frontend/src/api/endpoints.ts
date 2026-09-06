@@ -6,6 +6,20 @@ export const authApi = {
   register: (data: any) =>
     apiClient.post('/auth/register', data),
 
+  verifyEmail: (
+    email: string,
+    otp: string
+  ) =>
+    apiClient.post('/auth/verify-email', {
+      email,
+      otp,
+    }),
+
+  resendVerificationOtp: (email: string) =>
+    apiClient.post('/auth/resend-verification-otp', {
+      email,
+    }),
+
   login: (data: any) =>
     apiClient.post('/auth/login', data),
 
@@ -15,49 +29,32 @@ export const authApi = {
   me: () =>
     apiClient.get('/auth/me'),
 
-  verifyEmail: (token: string) =>
-    apiClient.post('/auth/verify-email', {
-      token,
-    }),
-
   forgotPassword: (email: string) =>
     apiClient.post('/auth/forgot-password', {
       email,
     }),
 
   resetPassword: (
-    token: string,
+    email: string,
+    otp: string,
     password: string
   ) =>
-    apiClient.post(
-      '/auth/reset-password',
-      {
-        token,
-        password,
-      }
-    ),
+    apiClient.post('/auth/reset-password', {
+      email,
+      otp,
+      password,
+    }),
 
-  updateProfilePicture: (
-    file: File
-  ) => {
-    const formData =
-      new FormData();
+  updateProfilePicture: (file: File) => {
+    const formData = new FormData();
 
-    formData.append(
-      'picture',
-      file
-    );
+    formData.append('picture', file);
 
-    return apiClient.put(
-      '/auth/profile-picture',
-      formData,
-      {
-        headers: {
-          'Content-Type':
-            'multipart/form-data',
-        },
-      }
-    );
+    return apiClient.put('/auth/profile-picture', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
   },
 };
 

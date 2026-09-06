@@ -146,18 +146,19 @@ enum InstallmentPlanStatus {
 // ---------------------------------------------------------------------------
 
 model User {
-  id               String    @id @default(uuid())
-  fullName         String
-  email            String    @unique
-  mobileNumber     String    @unique
-  passwordHash     String
-  role             Role      @default(USER)
-  isActive         Boolean   @default(true)
-  isEmailVerified  Boolean   @default(false)
-  emailVerifyToken String?
-  resetToken       String?
-  resetTokenExpiry DateTime?
-  isProtected      Boolean   @default(false)
+  id                     String    @id @default(uuid())
+  fullName               String
+  email                  String    @unique
+  mobileNumber           String    @unique
+  passwordHash           String
+  role                   Role      @default(USER)
+  isActive               Boolean   @default(true)
+  isEmailVerified        Boolean   @default(false)
+  emailVerifyToken       String?
+  emailVerifyTokenExpiry DateTime?
+  resetToken             String?
+  resetTokenExpiry       DateTime?
+  isProtected            Boolean   @default(false)
 
   gender         Gender?
   dateOfBirth    DateTime?
