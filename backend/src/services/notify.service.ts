@@ -12,6 +12,10 @@ const FRONTEND_URL =
   process.env.FRONTEND_URL ||
   'https://www.askittechnologies.com';
 
+const EMAIL_LOGO_URL =
+  process.env.EMAIL_LOGO_URL ||
+  `${FRONTEND_URL.replace(/\/$/, '')}/askit-logo.jpeg`;
+
 export type NotifyType =
   | 'REGISTRATION'
   | 'ATTENDANCE'
@@ -102,6 +106,332 @@ function notificationEmailHtml(
     '<br />'
   );
 
+  const safeLogoUrl = escapeHtml(EMAIL_LOGO_URL);
+
+  const isWelcomeEmail =
+    /welcome to askit technologies/i.test(title) ||
+    (/registration/i.test(title) &&
+      /verified|account.*ready|welcome/i.test(message));
+
+  if (isWelcomeEmail) {
+    const dashboardUrl =
+      url ||
+      absoluteLink('/dashboard') ||
+      `${FRONTEND_URL.replace(/\/$/, '')}/dashboard`;
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8" />
+          <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0"
+          />
+          <meta name="color-scheme" content="light only" />
+          <title>Welcome to AskIT Technologies</title>
+        </head>
+
+        <body
+          style="
+            margin:0;
+            padding:0;
+            background:#f4f7fb;
+            font-family:Arial,Helvetica,sans-serif;
+            color:#172033;
+          "
+        >
+          <div
+            style="
+              width:100%;
+              padding:28px 12px;
+              box-sizing:border-box;
+            "
+          >
+            <div
+              style="
+                max-width:640px;
+                margin:0 auto;
+                background:#ffffff;
+                border-radius:18px;
+                overflow:hidden;
+                border:1px solid #e7ecf3;
+                box-shadow:0 8px 28px rgba(15,29,69,0.10);
+              "
+            >
+              <div
+                style="
+                  background:#0f1d45;
+                  padding:28px 24px 24px;
+                  text-align:center;
+                "
+              >
+                <img
+                  src="${safeLogoUrl}"
+                  alt="AskIT Technologies"
+                  width="112"
+                  style="
+                    display:block;
+                    width:112px;
+                    max-width:112px;
+                    height:auto;
+                    margin:0 auto 14px;
+                    border:0;
+                    outline:none;
+                    text-decoration:none;
+                  "
+                />
+
+                <div
+                  style="
+                    color:#ffffff;
+                    font-size:26px;
+                    line-height:1.25;
+                    font-weight:800;
+                    letter-spacing:0.2px;
+                  "
+                >
+                  Ask<span style="color:#f97316;">IT</span> Technologies
+                </div>
+
+                <div
+                  style="
+                    color:#d7e0f2;
+                    font-size:11px;
+                    line-height:1.5;
+                    margin-top:8px;
+                    letter-spacing:1.2px;
+                  "
+                >
+                  LEARN TODAY &nbsp;|&nbsp; GROW TOMORROW &nbsp;|&nbsp; SUCCEED ALWAYS
+                </div>
+              </div>
+
+              <div
+                style="
+                  padding:34px 28px 30px;
+                  text-align:center;
+                "
+              >
+                <div
+                  style="
+                    font-size:42px;
+                    line-height:1;
+                    margin:0 0 16px;
+                  "
+                >
+                  🎉
+                </div>
+
+                <h1
+                  style="
+                    margin:0;
+                    color:#0f1d45;
+                    font-size:26px;
+                    line-height:1.35;
+                    font-weight:800;
+                  "
+                >
+                  Welcome to AskIT Technologies!
+                </h1>
+
+                <p
+                  style="
+                    margin:14px 0 0;
+                    color:#334155;
+                    font-size:17px;
+                    line-height:1.7;
+                  "
+                >
+                  Hi <strong>${safeName}</strong>,
+                </p>
+
+                <p
+                  style="
+                    margin:8px auto 0;
+                    max-width:520px;
+                    color:#64748b;
+                    font-size:15px;
+                    line-height:1.75;
+                  "
+                >
+                  Congratulations! Your email has been successfully verified and
+                  your AskIT Technologies account is now ready.
+                </p>
+
+                <div
+                  style="
+                    margin:24px 0 22px;
+                    padding:18px 14px;
+                    background:#f8fafc;
+                    border:1px solid #e2e8f0;
+                    border-radius:14px;
+                  "
+                >
+                  <table
+                    role="presentation"
+                    width="100%"
+                    cellspacing="0"
+                    cellpadding="0"
+                    border="0"
+                  >
+                    <tr>
+                      <td
+                        align="center"
+                        style="
+                          width:33.33%;
+                          padding:8px 4px;
+                          color:#334155;
+                          font-size:13px;
+                          line-height:1.5;
+                        "
+                      >
+                        <div style="font-size:24px; margin-bottom:5px;">✅</div>
+                        <strong>Email Verified</strong>
+                      </td>
+
+                      <td
+                        align="center"
+                        style="
+                          width:33.33%;
+                          padding:8px 4px;
+                          color:#334155;
+                          font-size:13px;
+                          line-height:1.5;
+                        "
+                      >
+                        <div style="font-size:24px; margin-bottom:5px;">🚀</div>
+                        <strong>Account Activated</strong>
+                      </td>
+
+                      <td
+                        align="center"
+                        style="
+                          width:33.33%;
+                          padding:8px 4px;
+                          color:#334155;
+                          font-size:13px;
+                          line-height:1.5;
+                        "
+                      >
+                        <div style="font-size:24px; margin-bottom:5px;">🎓</div>
+                        <strong>Ready to Explore</strong>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+
+                <div
+                  style="
+                    margin:0 auto 24px;
+                    max-width:520px;
+                    padding:16px 18px;
+                    background:#fff7ed;
+                    border-left:4px solid #f97316;
+                    border-radius:10px;
+                    color:#7c2d12;
+                    text-align:left;
+                    font-size:14px;
+                    line-height:1.7;
+                  "
+                >
+                  <strong>🌟 Your journey starts here.</strong><br />
+                  Explore learning opportunities, track your registrations,
+                  receive important updates and grow with AskIT Technologies.
+                </div>
+
+                <a
+                  href="${dashboardUrl}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style="
+                    display:inline-block;
+                    background:#2563eb;
+                    color:#ffffff;
+                    padding:14px 26px;
+                    border-radius:10px;
+                    text-decoration:none;
+                    font-size:15px;
+                    line-height:1.2;
+                    font-weight:700;
+                    box-shadow:0 5px 14px rgba(37,99,235,0.20);
+                  "
+                >
+                  Go to Your Dashboard →
+                </a>
+
+                <p
+                  style="
+                    margin:28px 0 0;
+                    color:#475569;
+                    font-size:14px;
+                    line-height:1.7;
+                  "
+                >
+                  We're excited to have you with us. Keep learning, keep growing,
+                  and keep moving toward your goals. 🚀
+                </p>
+
+                <p
+                  style="
+                    margin:18px 0 0;
+                    color:#0f1d45;
+                    font-size:14px;
+                    line-height:1.6;
+                    font-weight:700;
+                  "
+                >
+                  Best wishes,<br />
+                  Team AskIT Technologies ❤️
+                </p>
+              </div>
+
+              <div
+                style="
+                  background:#0f1d45;
+                  padding:20px 18px;
+                  text-align:center;
+                "
+              >
+                <div
+                  style="
+                    color:#ffffff;
+                    font-size:13px;
+                    font-weight:700;
+                    margin-bottom:6px;
+                  "
+                >
+                  AskIT Technologies
+                </div>
+
+                <div
+                  style="
+                    color:#aebbd5;
+                    font-size:11px;
+                    line-height:1.6;
+                  "
+                >
+                  Learn Today • Grow Tomorrow • Succeed Always
+                </div>
+
+                <div
+                  style="
+                    color:#7f91b4;
+                    font-size:10px;
+                    line-height:1.6;
+                    margin-top:10px;
+                  "
+                >
+                  This is an automated welcome message from AskIT Technologies.
+                </div>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+  }
+
   return `
     <!DOCTYPE html>
     <html>
@@ -142,10 +472,24 @@ function notificationEmailHtml(
             <div
               style="
                 background:#0f1d45;
-                padding:26px 20px;
+                padding:24px 20px;
                 text-align:center;
               "
             >
+              <img
+                src="${safeLogoUrl}"
+                alt="AskIT Technologies"
+                width="90"
+                style="
+                  display:block;
+                  width:90px;
+                  max-width:90px;
+                  height:auto;
+                  margin:0 auto 12px;
+                  border:0;
+                "
+              />
+
               <div
                 style="
                   color:#ffffff;
@@ -154,8 +498,7 @@ function notificationEmailHtml(
                   letter-spacing:0.2px;
                 "
               >
-                Ask<span style="color:#3b82f6;">IT</span>
-                Technologies
+                Ask<span style="color:#f97316;">IT</span> Technologies
               </div>
 
               <div
@@ -170,11 +513,7 @@ function notificationEmailHtml(
               </div>
             </div>
 
-            <div
-              style="
-                padding:30px 28px;
-              "
-            >
+            <div style="padding:30px 28px;">
               <p
                 style="
                   margin:0 0 18px;
@@ -209,11 +548,7 @@ function notificationEmailHtml(
               ${
                 url
                   ? `
-                    <div
-                      style="
-                        margin-top:26px;
-                      "
-                    >
+                    <div style="margin-top:26px;">
                       <a
                         href="${url}"
                         target="_blank"
@@ -244,8 +579,7 @@ function notificationEmailHtml(
                   line-height:1.6;
                 "
               >
-                This is an automated notification from AskIT
-                Technologies.
+                This is an automated notification from AskIT Technologies.
               </p>
             </div>
 
