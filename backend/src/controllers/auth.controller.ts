@@ -692,30 +692,32 @@ export async function verifyEmail(
     });
 
     void notifyUser({
-      userId:
-        user.id,
+  userId: user.id,
 
-      type:
-        'REGISTRATION',
+  type: 'REGISTRATION',
 
-      title:
-        'Welcome to AskIT Technologies',
+  title:
+    'Welcome to AskIT Technologies',
 
-      message:
-        'Your email has been verified and your account is ready.',
+  message:
+    `Hello ${user.fullName}, your email has been verified successfully and your AskIT Technologies account is now ready. Welcome to AskIT Technologies!`,
 
-      link:
-        '/dashboard',
+  link:
+    '/dashboard',
 
-      push: true,
-      email: false,
-      whatsapp: false,
-    }).catch((error) => {
-      console.error(
-        '[VERIFY EMAIL] Welcome notification error:',
-        error
-      );
-    });
+  push: true,
+
+  // IMPORTANT:
+  // This sends the welcome notification to the student's email too.
+  email: true,
+
+  whatsapp: false,
+}).catch((error) => {
+  console.error(
+    '[VERIFY EMAIL] Welcome notification error:',
+    error
+  );
+});
 
     void logActivity({
       actorId:
