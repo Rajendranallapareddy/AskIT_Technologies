@@ -26,8 +26,31 @@ export const loginValidation = [
 ];
 
 export const resetPasswordValidation = [
-  body('token').notEmpty().withMessage('Reset token is required'),
-  body('password').matches(PASSWORD_REGEX).withMessage('Password does not meet complexity requirements'),
+  body('email')
+    .trim()
+    .notEmpty()
+    .withMessage('Email address is required.')
+    .bail()
+    .isEmail()
+    .withMessage('Please enter a valid email address.')
+    .normalizeEmail(),
+
+  body('otp')
+    .trim()
+    .notEmpty()
+    .withMessage('Password reset OTP is required.')
+    .bail()
+    .matches(/^\d{6}$/)
+    .withMessage('Please enter a valid 6-digit OTP.'),
+
+  body('password')
+    .notEmpty()
+    .withMessage('New password is required.')
+    .bail()
+    .isLength({ min: 8 })
+    .withMessage(
+      'New password must contain at least 8 characters.'
+    ),
 ];
 
 export const idParamValidation = [param('id').isUUID().withMessage('Invalid id')];
