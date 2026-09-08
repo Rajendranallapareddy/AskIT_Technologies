@@ -471,6 +471,35 @@ export async function updateSession(
   }
 }
 
+
+// DELETE /api/trainer/sessions/:id
+export async function deleteSession(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const session =
+      await ensureTrainerCanManageSession(
+        req.user!.id,
+        req.params.id
+      );
+
+    await prisma.attendanceSession.delete({
+      where: {
+        id: session.id,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'Session deleted successfully',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // GET /api/trainer/internships/:internshipId/sessions
 export async function listSessions(
   req: AuthRequest,

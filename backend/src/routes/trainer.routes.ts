@@ -1,15 +1,21 @@
 import { Router } from 'express';
+
 import * as trainerController from '../controllers/trainer.controller';
 import * as attendanceController from '../controllers/attendance.controller';
+
 import { authenticate } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
+
 import { uploadMaterial } from '../services/upload.service';
 
 const router = Router();
 
 router.use(authenticate, requireRole('TRAINER'));
 
-router.get('/dashboard', trainerController.getTrainerDashboard);
+router.get(
+  '/dashboard',
+  trainerController.getTrainerDashboard
+);
 
 router.get(
   '/internships/:id/participants',
@@ -50,6 +56,11 @@ router.get(
 router.put(
   '/sessions/:id',
   attendanceController.updateSession
+);
+
+router.delete(
+  '/sessions/:id',
+  attendanceController.deleteSession
 );
 
 router.post(
