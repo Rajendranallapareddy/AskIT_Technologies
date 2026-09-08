@@ -651,9 +651,7 @@ export default function AdminTrainers() {
           return assigned.length
             ? assigned
                 .map(
-                  (
-                    internship
-                  ) =>
+                  (internship: any) =>
                     internship.title
                 )
                 .join(', ')
@@ -1239,9 +1237,7 @@ export default function AdminTrainers() {
             </option>
 
             {internships.map(
-              (
-                internship
-              ) => {
+              (internship: any) => {
                 const assignedIds =
                   getAssignedTrainerIds(
                     internship.id
@@ -1324,9 +1320,7 @@ export default function AdminTrainers() {
                 {trainerInternships(
                   assignOpen.id
                 ).map(
-                  (
-                    internship
-                  ) => (
+                  (internship: any) => (
                     <div
                       key={
                         internship.id

@@ -261,6 +261,13 @@ export const trainerApi = {
       data
     ),
 
+  deleteSession: (
+    id: string
+  ) =>
+    apiClient.delete(
+      `/trainer/sessions/${id}`
+    ),
+
   markAttendance: (
     sessionId: string,
     records: any[]

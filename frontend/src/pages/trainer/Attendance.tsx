@@ -4,6 +4,7 @@ import {
   CalendarCheck,
   Video,
   Pencil,
+  Trash2,
   Briefcase,
   Users,
 } from 'lucide-react';
@@ -287,6 +288,57 @@ export default function Attendance() {
           getErrorMessage(
             err
           )
+        );
+      }
+    };
+
+
+  const handleDeleteSession =
+    async (session: any) => {
+      const label =
+        session.topic ||
+        formatDateTime(session.date);
+
+      const confirmed =
+        window.confirm(
+          `Delete session "${label}"? This will also delete all attendance records for this session. This action cannot be undone.`
+        );
+
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await trainerApi.deleteSession(
+          session.id
+        );
+
+        toast.success(
+          'Session deleted successfully'
+        );
+
+        if (
+          editingSession?.id ===
+          session.id
+        ) {
+          setEditingSession(null);
+          setSessionModalOpen(false);
+          setSessionForm(
+            emptySessionForm
+          );
+        }
+
+        if (
+          markingSession?.id ===
+          session.id
+        ) {
+          setMarkingSession(null);
+        }
+
+        load();
+      } catch (err) {
+        toast.error(
+          getErrorMessage(err)
         );
       }
     };
