@@ -48,24 +48,37 @@ export const authApi = {
   updateProfilePicture: (file: File) => {
     const formData = new FormData();
 
-    formData.append('picture', file);
+    formData.append(
+      'picture',
+      file
+    );
 
-    return apiClient.put('/auth/profile-picture', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    return apiClient.put(
+      '/auth/profile-picture',
+      formData,
+      {
+        headers: {
+          'Content-Type':
+            'multipart/form-data',
+        },
+      }
+    );
   },
 };
+
 
 // --- Public --------------------------------------------------------------
 
 export const publicApi = {
   stats: () =>
-    apiClient.get('/public/stats'),
+    apiClient.get(
+      '/public/stats'
+    ),
 
   courses: () =>
-    apiClient.get('/public/courses'),
+    apiClient.get(
+      '/public/courses'
+    ),
 
   testimonials: () =>
     apiClient.get(
@@ -73,7 +86,9 @@ export const publicApi = {
     ),
 
   gallery: () =>
-    apiClient.get('/public/gallery'),
+    apiClient.get(
+      '/public/gallery'
+    ),
 
   internships: (
     params?: any
@@ -113,7 +128,8 @@ export const publicApi = {
     ),
 };
 
-// --- User (student) --------------------------------------------------------------
+
+// --- User --------------------------------------------------------------
 
 export const userApi = {
   dashboard: () =>
@@ -204,6 +220,7 @@ export const userApi = {
     ),
 };
 
+
 // --- Trainer --------------------------------------------------------------
 
 export const trainerApi = {
@@ -265,7 +282,8 @@ export const trainerApi = {
     ),
 };
 
-// --- Admin / Super Admin --------------------------------------------------------------
+
+// --- Admin / Super Admin -------------------------------------------------
 
 export const adminApi = {
   dashboard: () =>
@@ -441,6 +459,19 @@ export const adminApi = {
       `/admin/trainers/${id}`
     ),
 
+  setInternshipTrainers: (
+    internshipId: string,
+    trainerIds: string[]
+  ) =>
+    apiClient.put(
+      '/admin/trainers/assign',
+      {
+        internshipId,
+        trainerIds,
+      }
+    ),
+
+  // Compatibility with older frontend components.
   assignTrainer: (
     internshipId: string,
     trainerId: string | null
@@ -449,7 +480,11 @@ export const adminApi = {
       '/admin/trainers/assign',
       {
         internshipId,
-        trainerId,
+
+        trainerIds:
+          trainerId
+            ? [trainerId]
+            : [],
       }
     ),
 
@@ -573,7 +608,8 @@ export const adminApi = {
     ),
 };
 
-// --- Payments (student-facing checkout) --------------------------------
+
+// --- Payments -------------------------------------------------------------
 
 export const paymentApi = {
   createOrder: (
@@ -668,6 +704,7 @@ export const paymentApi = {
       '/public/coupons/validate',
       {
         internshipId,
+
         couponCode:
           couponCode ||
           undefined,
@@ -710,7 +747,8 @@ export const paymentApi = {
     ),
 };
 
-// --- Admin: Payments, Refunds, Coupons, Payment Settings ----------------
+
+// --- Admin Payments -------------------------------------------------------
 
 export const adminPaymentApi = {
   list: (
@@ -899,7 +937,8 @@ export const adminPaymentApi = {
     ),
 };
 
-// --- Super Admin: Payment Accounts ---------------------------------------
+
+// --- Payment Accounts -----------------------------------------------------
 
 export const paymentAccountApi = {
   list: () =>
@@ -919,8 +958,7 @@ export const paymentAccountApi = {
     ).forEach(
       ([key, value]) => {
         if (
-          value !==
-            undefined &&
+          value !== undefined &&
           value !== null
         ) {
           formData.append(
@@ -963,8 +1001,7 @@ export const paymentAccountApi = {
     ).forEach(
       ([key, value]) => {
         if (
-          value !==
-            undefined &&
+          value !== undefined &&
           value !== null
         ) {
           formData.append(
@@ -1009,18 +1046,8 @@ export const paymentAccountApi = {
     ),
 };
 
+
 // --- Notifications --------------------------------------------------------
-//
-// Works for:
-// - Students
-// - Trainers
-// - Sub Admins
-// - Super Admin
-//
-// IMPORTANT:
-// pushSubscribe sends the PushSubscription JSON directly because the
-// backend expects req.body.endpoint + req.body.keys.
-// ---------------------------------------------------------------------------
 
 export const notificationApi = {
   list: (
@@ -1078,7 +1105,8 @@ export const notificationApi = {
     ),
 };
 
-// --- Super Admin -----------------------------------------------------------
+
+// --- Super Admin ----------------------------------------------------------
 
 export const superAdminApi = {
   updateOwnProfile: (

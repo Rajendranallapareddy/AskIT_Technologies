@@ -376,57 +376,344 @@ export async function deleteTrainer(req: AuthRequest, res: Response, next: NextF
   }
 }
 
-export async function assignTrainer(req: AuthRequest, res: Response, next: NextFunction) {
+export async function assignTrainer(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
   try {
-    const { internshipId, trainerId } = req.body;
-    if (!internshipId) throw new AppError('internshipId is required', 400);
+    const {
+      internshipId,
+    } = req.body;
 
-    // trainerId is intentionally optional here — passing null unassigns the
-    // internship's trainer instead of crashing (previously this endpoint
-    // assumed a trainer was always being assigned and threw when it wasn't).
-    let trainerUserId: string | null = null;
-    if (trainerId) {
-      const trainer = await prisma.trainer.findUnique({ where: { id: trainerId } });
-      if (!trainer) throw new AppError('Trainer not found', 404);
-      trainerUserId = trainer.userId;
+    if (
+      !internshipId
+    ) {
+      throw new AppError(
+        'internshipId is required',
+        400
+      );
     }
 
-    const internship = await prisma.internship.update({
-      where: { id: internshipId },
-      data: { trainerId: trainerId || null },
-    });
+    /*
+     * New API:
+     *
+     * trainerIds: string[]
+     *
+     * We also support the old
+     * trainerId value temporarily.
+     */
+    const requestedTrainerIds:
+      string[] =
+      Array.isArray(
+        req.body.trainerIds
+      )
+        ? req.body.trainerIds
+        : req.body.trainerId
+          ? [
+              req.body
+                .trainerId,
+            ]
+          : [];
 
-    if (trainerUserId) {
-      await prisma.notification.create({
-        data: {
-          userId: trainerUserId,
-          type: 'SYSTEM',
-          title: 'New Internship Assigned',
-          message: `You have been assigned to train "${internship.title}".`,
+    const trainerIds =
+      Array.from(
+        new Set(
+          requestedTrainerIds
+            .map(
+              (
+                id: any
+              ) =>
+                String(
+                  id || ''
+                ).trim()
+            )
+            .filter(
+              Boolean
+            )
+        )
+      );
+
+    const internship =
+      await prisma.internship.findUnique({
+        where: {
+          id:
+            internshipId,
         },
+
+        include: {
+          trainerAssignments: {
+            include: {
+              trainer: {
+                include: {
+                  user: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+    if (!internship) {
+      throw new AppError(
+        'Internship not found',
+        404
+      );
+    }
+
+    const trainers =
+      trainerIds.length
+        ? await prisma.trainer.findMany(
+            {
+              where: {
+                id: {
+                  in:
+                    trainerIds,
+                },
+              },
+
+              include: {
+                user: true,
+              },
+            }
+          )
+        : [];
+
+    if (
+      trainers.length !==
+      trainerIds.length
+    ) {
+      throw new AppError(
+        'One or more selected trainers were not found',
+        404
+      );
+    }
+
+    const existingIds =
+      new Set(
+        internship.trainerAssignments.map(
+          (
+            assignment
+          ) =>
+            assignment.trainerId
+        )
+      );
+
+    const newlyAdded =
+      trainers.filter(
+        (
+          trainer
+        ) =>
+          !existingIds.has(
+            trainer.id
+          )
+      );
+
+    await prisma.$transaction(
+      async (
+        tx
+      ) => {
+        /*
+         * Keep legacy
+         * Internship.trainerId
+         * synchronized with
+         * first selected trainer.
+         */
+        await tx.internship.update({
+          where: {
+            id:
+              internshipId,
+          },
+
+          data: {
+            trainerId:
+              trainerIds[0] ||
+              null,
+          },
+        });
+
+        /*
+         * Replace join-table
+         * assignments with the
+         * complete selected list.
+         */
+        await tx.internshipTrainer.deleteMany(
+          {
+            where: {
+              internshipId,
+            },
+          }
+        );
+
+        if (
+          trainerIds.length
+        ) {
+          await tx.internshipTrainer.createMany(
+            {
+              data:
+                trainerIds.map(
+                  (
+                    trainerId
+                  ) => ({
+                    internshipId,
+                    trainerId,
+                  })
+                ),
+
+              skipDuplicates:
+                true,
+            }
+          );
+        }
+      }
+    );
+
+    /*
+     * Notify only trainers
+     * newly added this time.
+     */
+    if (
+      newlyAdded.length
+    ) {
+      await prisma.notification.createMany({
+        data:
+          newlyAdded.map(
+            (
+              trainer
+            ) => ({
+              userId:
+                trainer.userId,
+
+              type:
+                'SYSTEM' as const,
+
+              title:
+                'New Internship Assigned',
+
+              message:
+                `You have been assigned to train "${internship.title}".`,
+            })
+          ),
       });
     }
 
+    const updated =
+      await prisma.internship.findUnique({
+        where: {
+          id:
+            internshipId,
+        },
+
+        include: {
+          trainerAssignments: {
+            include: {
+              trainer: {
+                include: {
+                  user: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
     await logActivity({
-      actorId: req.user!.id,
-      action: 'TRAINER_ASSIGN',
-      description: trainerId ? `Assigned trainer to "${internship.title}"` : `Removed trainer from "${internship.title}"`,
-      ipAddress: req.ip,
+      actorId:
+        req.user!.id,
+
+      action:
+        'TRAINER_ASSIGN',
+
+      description:
+        trainerIds.length
+          ? `Assigned ${trainerIds.length} trainer(s) to "${internship.title}"`
+          : `Removed all trainers from "${internship.title}"`,
+
+      ipAddress:
+        req.ip,
     });
 
-    res.json({ success: true, message: trainerId ? 'Trainer assigned successfully' : 'Trainer removed from internship', data: internship });
+    res.json({
+      success: true,
+
+      message:
+        trainerIds.length
+          ? 'Trainers assigned successfully'
+          : 'All trainers removed from internship',
+
+      data:
+        updated,
+    });
   } catch (err) {
     next(err);
   }
 }
 
-export async function listAllTrainers(_req: AuthRequest, res: Response, next: NextFunction) {
+export async function listAllTrainers(
+  _req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
   try {
-    const trainers = await prisma.trainer.findMany({
-      include: { user: true, _count: { select: { internships: true } } },
-      orderBy: { createdAt: 'desc' },
+    const trainers =
+      await prisma.trainer.findMany({
+        include: {
+          user: true,
+
+          internshipAssignments: {
+            include: {
+              internship:
+                true,
+            },
+
+            orderBy: {
+              assignedAt:
+                'desc',
+            },
+          },
+
+          _count: {
+            select: {
+              internshipAssignments:
+                true,
+            },
+          },
+        },
+
+        orderBy: {
+          createdAt:
+            'desc',
+        },
+      });
+
+    res.json({
+      success: true,
+
+      data:
+        trainers.map(
+          (
+            trainer
+          ) => ({
+            ...trainer,
+
+            internships:
+              trainer.internshipAssignments.map(
+                (
+                  assignment
+                ) =>
+                  assignment.internship
+              ),
+
+            _count: {
+              ...trainer._count,
+
+              internships:
+                trainer._count
+                  .internshipAssignments,
+            },
+          })
+        ),
     });
-    res.json({ success: true, data: trainers });
   } catch (err) {
     next(err);
   }
@@ -435,18 +722,78 @@ export async function listAllTrainers(_req: AuthRequest, res: Response, next: Ne
 // GET /api/admin/trainers/:id — full profile for one trainer (qualification/
 // expertise/experience/bio, plus their assigned internships), used by the
 // read-only trainer detail view under Admin → Users → Trainers.
-export async function getTrainerDetail(req: AuthRequest, res: Response, next: NextFunction) {
+export async function getTrainerDetail(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
   try {
-    const trainer = await prisma.trainer.findUnique({
-      where: { id: req.params.id },
-      include: {
-        user: true,
-        internships: { orderBy: { createdAt: 'desc' } },
-        _count: { select: { internships: true } },
+    const trainer =
+      await prisma.trainer.findUnique({
+        where: {
+          id:
+            req.params.id,
+        },
+
+        include: {
+          user: true,
+
+          internshipAssignments: {
+            include: {
+              internship:
+                true,
+            },
+
+            orderBy: {
+              assignedAt:
+                'desc',
+            },
+          },
+
+          _count: {
+            select: {
+              internshipAssignments:
+                true,
+            },
+          },
+        },
+      });
+
+    if (!trainer) {
+      throw new AppError(
+        'Trainer not found',
+        404
+      );
+    }
+
+    res.json({
+      success: true,
+
+      data: {
+        ...trainer,
+
+        user:
+          sanitizeUser(
+            trainer.user
+          ),
+
+        internships:
+          trainer.internshipAssignments.map(
+            (
+              assignment
+            ) =>
+              assignment.internship
+          ),
+
+        _count: {
+          ...trainer._count,
+
+          internships:
+            trainer._count
+              .internshipAssignments,
+        },
       },
     });
-    if (!trainer) throw new AppError('Trainer not found', 404);
-    res.json({ success: true, data: { ...trainer, user: sanitizeUser(trainer.user) } });
   } catch (err) {
     next(err);
   }

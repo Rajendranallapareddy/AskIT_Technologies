@@ -1,11 +1,8 @@
-// ASK IT Solutions & Consultancy - Database Schema
-// Covers: Auth, RBAC (SuperAdmin/SubAdmin/Trainer/User), Courses, Internships,
-// Registrations, Attendance, Certificates, Announcements, Notifications,
-// Contact Requests, Activity Logs, Permissions, Testimonials, Gallery.
+// AskIT Technologies - Database Schema
 
 generator client {
-  provider = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -176,8 +173,9 @@ model User {
 
   lastLoginAt DateTime?
   lastLoginIp String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   trainerProfile       Trainer?
   registrations        Registration[]
@@ -201,7 +199,8 @@ model User {
 model SubAdminPermission {
   id     String @id @default(uuid())
   userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   manageUsers           Boolean @default(false)
   manageTrainers        Boolean @default(false)
@@ -229,7 +228,8 @@ model SubAdminPermission {
 model Trainer {
   id     String @id @default(uuid())
   userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   photo           String?
   expertise       String[]
@@ -240,8 +240,13 @@ model Trainer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Legacy one-trainer relation kept for compatibility.
   internships Internship[]
-  materials   Material[]
+
+  // New many-to-many assignments.
+  internshipAssignments InternshipTrainer[]
+
+  materials Material[]
 
   @@index([userId])
 }
@@ -260,22 +265,28 @@ model Course {
   duration    String
   syllabus    String[]
   isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   internships Internship[]
 }
 
 model Internship {
-  id          String  @id @default(uuid())
+  id          String @id @default(uuid())
   title       String
-  slug        String  @unique
-  description String  @db.Text
-  courseId    String?
-  course      Course? @relation(fields: [courseId], references: [id])
+  slug        String @unique
+  description String @db.Text
 
+  courseId String?
+  course   Course? @relation(fields: [courseId], references: [id])
+
+  // Legacy single trainer kept temporarily.
   trainerId String?
   trainer   Trainer? @relation(fields: [trainerId], references: [id])
+
+  // New multiple trainer assignments.
+  trainerAssignments InternshipTrainer[]
 
   duration             String
   startDate            DateTime
@@ -292,9 +303,10 @@ model Internship {
   gstPercentage     Decimal   @default(0) @db.Decimal(5, 2)
 
   createdById String?
-  createdBy   User?    @relation("InternshipCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdBy   User?   @relation("InternshipCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   registrations      Registration[]
   attendanceSessions AttendanceSession[]
@@ -307,24 +319,43 @@ model Internship {
   @@index([slug])
 }
 
+model InternshipTrainer {
+  id String @id @default(uuid())
+
+  internshipId String
+  internship   Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+
+  trainerId String
+  trainer   Trainer @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  assignedAt DateTime @default(now())
+
+  @@unique([internshipId, trainerId])
+  @@index([internshipId])
+  @@index([trainerId])
+}
+
 // ---------------------------------------------------------------------------
 // REGISTRATIONS
 // ---------------------------------------------------------------------------
 
 model Registration {
-  id             String     @id @default(uuid())
-  registrationNo String?    @unique
-  userId         String
-  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  internshipId   String
-  internship     Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  id             String  @id @default(uuid())
+  registrationNo String? @unique
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  internshipId String
+  internship   Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
 
   status          RegistrationStatus @default(PENDING)
   requiresPayment Boolean            @default(false)
-  appliedAt       DateTime           @default(now())
-  decidedAt       DateTime?
-  cancelledAt     DateTime?
-  completedAt     DateTime?
+
+  appliedAt   DateTime  @default(now())
+  decidedAt   DateTime?
+  cancelledAt DateTime?
+  completedAt DateTime?
 
   payments        Payment[]
   installmentPlan InstallmentPlan?
@@ -370,9 +401,10 @@ model PendingRegistration {
 // ---------------------------------------------------------------------------
 
 model InstallmentPlan {
-  id             String       @id @default(uuid())
-  registrationId String       @unique
-  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  id             String @id @default(uuid())
+  registrationId String @unique
+
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
 
   totalAmount          Decimal               @db.Decimal(10, 2)
   numberOfInstallments Int
@@ -391,15 +423,20 @@ model InstallmentPlan {
 // ---------------------------------------------------------------------------
 
 model AttendanceSession {
-  id            String     @id @default(uuid())
-  internshipId  String
-  internship    Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
-  date          DateTime
-  topic         String?
-  zoomLink      String?
-  zoomMeetingId String?
-  zoomPasscode  String?
-  createdAt     DateTime   @default(now())
+  id String @id @default(uuid())
+
+  internshipId String
+  internship   Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+
+  date  DateTime
+  topic String?
+
+  // Generic meeting details.
+  meetLink  String?
+  meetingId String?
+  passcode  String?
+
+  createdAt DateTime @default(now())
 
   records Attendance[]
 
@@ -407,14 +444,17 @@ model AttendanceSession {
 }
 
 model Attendance {
-  id        String            @id @default(uuid())
+  id String @id @default(uuid())
+
   sessionId String
   session   AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status    AttendanceStatus  @default(ABSENT)
-  markedAt  DateTime          @default(now())
-  markedBy  String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status   AttendanceStatus @default(ABSENT)
+  markedAt DateTime         @default(now())
+  markedBy String?
 
   @@unique([sessionId, userId])
   @@index([userId])
@@ -425,12 +465,14 @@ model Attendance {
 // ---------------------------------------------------------------------------
 
 model Certificate {
-  id            String     @id @default(uuid())
-  certificateNo String     @unique
-  userId        String
-  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  internshipId  String
-  internship    Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  id            String @id @default(uuid())
+  certificateNo String @unique
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  internshipId String
+  internship   Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
 
   status   CertificateStatus @default(PENDING)
   issuedAt DateTime?
@@ -447,38 +489,52 @@ model Certificate {
 // ---------------------------------------------------------------------------
 
 model Announcement {
-  id           String      @id @default(uuid())
-  title        String
-  message      String      @db.Text
+  id      String @id @default(uuid())
+  title   String
+  message String @db.Text
+
   internshipId String?
   internship   Internship? @relation(fields: [internshipId], references: [id], onDelete: Cascade)
-  createdById  String?
-  createdBy    User?       @relation("AnnouncementCreatedBy", fields: [createdById], references: [id])
-  isGlobal     Boolean     @default(false)
-  createdAt    DateTime    @default(now())
+
+  createdById String?
+  createdBy   User?   @relation("AnnouncementCreatedBy", fields: [createdById], references: [id])
+
+  isGlobal Boolean @default(false)
+
+  createdAt DateTime @default(now())
 }
 
 model Material {
-  id           String     @id @default(uuid())
+  id String @id @default(uuid())
+
   internshipId String
   internship   Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
-  trainerId    String?
-  trainer      Trainer?   @relation(fields: [trainerId], references: [id])
-  title        String
-  fileUrl      String
-  createdAt    DateTime   @default(now())
+
+  trainerId String?
+  trainer   Trainer? @relation(fields: [trainerId], references: [id])
+
+  title   String
+  fileUrl String
+
+  createdAt DateTime @default(now())
 }
 
 model Notification {
-  id        String           @id @default(uuid())
-  userId    String
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      NotificationType
-  title     String
-  message   String
-  link      String?
-  isRead    Boolean          @default(false)
-  createdAt DateTime         @default(now())
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type NotificationType
+
+  title   String
+  message String
+
+  link String?
+
+  isRead Boolean @default(false)
+
+  createdAt DateTime @default(now())
 
   @@index([userId, isRead])
 }
@@ -488,12 +544,15 @@ model Notification {
 // ---------------------------------------------------------------------------
 
 model PushSubscription {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  endpoint String @unique
+  p256dh   String
+  auth     String
+
   createdAt DateTime @default(now())
 
   @@index([userId])
@@ -504,33 +563,46 @@ model PushSubscription {
 // ---------------------------------------------------------------------------
 
 model Testimonial {
-  id          String   @id @default(uuid())
-  name        String
-  role        String?
-  photo       String?
-  rating      Int      @default(5)
-  review      String   @db.Text
-  isPublished Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  id String @id @default(uuid())
+
+  name  String
+  role  String?
+  photo String?
+
+  rating Int @default(5)
+
+  review String @db.Text
+
+  isPublished Boolean @default(true)
+
+  createdAt DateTime @default(now())
 }
 
 model GalleryImage {
-  id        String   @id @default(uuid())
-  imageUrl  String
-  caption   String?
-  category  String?
+  id String @id @default(uuid())
+
+  imageUrl String
+
+  caption  String?
+  category String?
+
   createdAt DateTime @default(now())
 }
 
 model ContactRequest {
-  id        String        @id @default(uuid())
-  name      String
-  email     String
-  phone     String?
-  subject   String?
-  message   String        @db.Text
-  status    ContactStatus @default(NEW)
-  createdAt DateTime      @default(now())
+  id String @id @default(uuid())
+
+  name  String
+  email String
+
+  phone   String?
+  subject String?
+
+  message String @db.Text
+
+  status ContactStatus @default(NEW)
+
+  createdAt DateTime @default(now())
 }
 
 // ---------------------------------------------------------------------------
@@ -538,29 +610,35 @@ model ContactRequest {
 // ---------------------------------------------------------------------------
 
 model Payment {
-  id             String @id @default(uuid())
+  id String @id @default(uuid())
+
   paymentNo      String @unique
   idempotencyKey String @unique
 
-  userId         String
-  user           User          @relation(fields: [userId], references: [id])
-  internshipId   String
-  internship     Internship    @relation(fields: [internshipId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  internshipId String
+  internship   Internship @relation(fields: [internshipId], references: [id])
+
   registrationId String?
   registration   Registration? @relation(fields: [registrationId], references: [id])
-  couponId       String?
-  coupon         Coupon?       @relation(fields: [couponId], references: [id])
+
+  couponId String?
+  coupon   Coupon? @relation(fields: [couponId], references: [id])
 
   installmentPlanId String?
   installmentPlan   InstallmentPlan? @relation(fields: [installmentPlanId], references: [id])
-  installmentIndex  Int?
-  dueDate           DateTime?
+
+  installmentIndex Int?
+  dueDate          DateTime?
 
   baseAmount     Decimal @db.Decimal(10, 2)
   discountAmount Decimal @default(0) @db.Decimal(10, 2)
   taxAmount      Decimal @default(0) @db.Decimal(10, 2)
   totalAmount    Decimal @db.Decimal(10, 2)
-  currency       String  @default("INR")
+
+  currency String @default("INR")
 
   status  PaymentStatus  @default(PENDING)
   method  PaymentMethod?
@@ -569,19 +647,22 @@ model Payment {
   gatewayOrderId   String? @unique
   gatewayPaymentId String? @unique
   gatewaySignature String?
+
   failureReason    String?
   studentReference String?
 
-  approvedById    String?
-  approvedBy      User?     @relation("PaymentApprovedBy", fields: [approvedById], references: [id])
+  approvedById String?
+  approvedBy   User?   @relation("PaymentApprovedBy", fields: [approvedById], references: [id])
+
   approvedAt      DateTime?
   rejectionReason String?
 
   lastReminderSentAt DateTime?
 
-  paidAt    DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  paidAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   receipt Receipt?
   refunds Refund[]
@@ -594,34 +675,44 @@ model Payment {
 }
 
 model Receipt {
-  id        String  @id @default(uuid())
-  receiptNo String  @unique
+  id String @id @default(uuid())
+
+  receiptNo String @unique
+
   paymentId String  @unique
   payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
-  verifyToken   String    @unique
-  fileUrl       String?
-  emailedAt     DateTime?
-  verifiedCount Int       @default(0)
+  verifyToken String @unique
+
+  fileUrl   String?
+  emailedAt DateTime?
+
+  verifiedCount Int @default(0)
 
   createdAt DateTime @default(now())
 }
 
 model Refund {
-  id        String  @id @default(uuid())
-  refundNo  String  @unique
+  id String @id @default(uuid())
+
+  refundNo String @unique
+
   paymentId String
   payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
-  amount Decimal      @db.Decimal(10, 2)
+  amount Decimal @db.Decimal(10, 2)
+
   type   RefundType   @default(FULL)
   reason String       @db.Text
   status RefundStatus @default(REQUESTED)
 
-  requestedById   String?
-  decidedById     String?
-  decidedBy       User?     @relation("RefundDecidedBy", fields: [decidedById], references: [id])
-  decidedAt       DateTime?
+  requestedById String?
+
+  decidedById String?
+  decidedBy   User?   @relation("RefundDecidedBy", fields: [decidedById], references: [id])
+
+  decidedAt DateTime?
+
   gatewayRefundId String?
 
   createdAt DateTime @default(now())
@@ -632,10 +723,13 @@ model Refund {
 }
 
 model PaymentAccount {
-  id       String             @id @default(uuid())
-  type     PaymentAccountType
-  label    String
-  isActive Boolean            @default(true)
+  id String @id @default(uuid())
+
+  type PaymentAccountType
+
+  label String
+
+  isActive Boolean @default(true)
 
   upiId     String?
   qrCodeUrl String?
@@ -652,35 +746,50 @@ model PaymentAccount {
   gatewayKeySecretEnc String?
 
   createdById String?
-  createdBy   User?    @relation("PaymentAccountCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdBy   User?   @relation("PaymentAccountCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model PaymentSettings {
-  id               String         @id @default("singleton")
-  gstPercentage    Decimal        @default(0) @db.Decimal(5, 2)
-  currency         String         @default("INR")
-  activeGateway    PaymentGateway @default(RAZORPAY)
-  allowedMethods   String[]       @default(["UPI", "CARD", "NETBANKING", "WALLET"])
-  autoApproveOnPay Boolean        @default(false)
-  updatedAt        DateTime       @updatedAt
+  id String @id @default("singleton")
+
+  gstPercentage Decimal @default(0) @db.Decimal(5, 2)
+
+  currency String @default("INR")
+
+  activeGateway PaymentGateway @default(RAZORPAY)
+
+  allowedMethods String[] @default(["UPI", "CARD", "NETBANKING", "WALLET"])
+
+  autoApproveOnPay Boolean @default(false)
+
+  updatedAt DateTime @updatedAt
 }
 
 model Coupon {
-  id                      String       @id @default(uuid())
-  code                    String       @unique
-  description             String?
-  discountType            DiscountType @default(PERCENTAGE)
-  discountValue           Decimal      @db.Decimal(10, 2)
-  maxDiscountAmount       Decimal?     @db.Decimal(10, 2)
-  minOrderAmount          Decimal?     @db.Decimal(10, 2)
-  usageLimit              Int?
-  usedCount               Int          @default(0)
-  validFrom               DateTime?
-  validUntil              DateTime?
-  isActive                Boolean      @default(true)
-  applicableInternshipIds String[]     @default([])
+  id String @id @default(uuid())
+
+  code String @unique
+
+  description String?
+
+  discountType  DiscountType @default(PERCENTAGE)
+  discountValue Decimal      @db.Decimal(10, 2)
+
+  maxDiscountAmount Decimal? @db.Decimal(10, 2)
+  minOrderAmount    Decimal? @db.Decimal(10, 2)
+
+  usageLimit Int?
+  usedCount  Int  @default(0)
+
+  validFrom  DateTime?
+  validUntil DateTime?
+
+  isActive Boolean @default(true)
+
+  applicableInternshipIds String[] @default([])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -693,15 +802,20 @@ model Coupon {
 // ---------------------------------------------------------------------------
 
 model ActivityLog {
-  id            String   @id @default(uuid())
-  actorId       String?
-  actor         User?    @relation("ActorLogs", fields: [actorId], references: [id], onDelete: SetNull)
-  action        String
-  description   String
+  id String @id @default(uuid())
+
+  actorId String?
+  actor   User?   @relation("ActorLogs", fields: [actorId], references: [id], onDelete: SetNull)
+
+  action      String
+  description String
+
   previousValue Json?
   newValue      Json?
-  ipAddress     String?
-  createdAt     DateTime @default(now())
+
+  ipAddress String?
+
+  createdAt DateTime @default(now())
 
   @@index([actorId])
   @@index([action])
