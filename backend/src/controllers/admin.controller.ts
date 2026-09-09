@@ -1109,3 +1109,151 @@ export async function deleteGalleryImage(req: AuthRequest, res: Response, next: 
     next(err);
   }
 }
+
+// ---------------------------------------------------------------------------
+// ACTIVITY LOG MANAGEMENT
+// Super Admin only routes should expose these handlers.
+// ---------------------------------------------------------------------------
+
+// GET /api/admin/activity-logs
+export async function listActivityLogs(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 25;
+    const { skip, take } = paginate(page, limit);
+
+    const search = String(req.query.search || '').trim();
+
+    const where: any = {};
+
+    if (search) {
+      where.OR = [
+        {
+          action: {
+            contains: search,
+            mode: 'insensitive',
+          },
+        },
+        {
+          description: {
+            contains: search,
+            mode: 'insensitive',
+          },
+        },
+        {
+          actor: {
+            fullName: {
+              contains: search,
+              mode: 'insensitive',
+            },
+          },
+        },
+      ];
+    }
+
+    const [logs, total] = await Promise.all([
+      prisma.activityLog.findMany({
+        where,
+        include: {
+          actor: {
+            select: {
+              id: true,
+              fullName: true,
+              role: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip,
+        take,
+      }),
+
+      prisma.activityLog.count({
+        where,
+      }),
+    ]);
+
+    return res.json({
+      success: true,
+      data: logs,
+      meta: buildMeta(
+        total,
+        page,
+        limit
+      ),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+
+// DELETE /api/admin/activity-logs/:id
+export async function deleteActivityLog(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const log =
+      await prisma.activityLog.findUnique({
+        where: {
+          id: req.params.id,
+        },
+      });
+
+    if (!log) {
+      throw new AppError(
+        'Activity log not found',
+        404
+      );
+    }
+
+    await prisma.activityLog.delete({
+      where: {
+        id: log.id,
+      },
+    });
+
+    return res.json({
+      success: true,
+      message:
+        'Activity log deleted successfully',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+
+// DELETE /api/admin/activity-logs
+export async function deleteAllActivityLogs(
+  _req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const result =
+      await prisma.activityLog.deleteMany({});
+
+    return res.json({
+      success: true,
+      message: `${result.count} activity log${
+        result.count === 1 ? '' : 's'
+      } deleted successfully`,
+      data: {
+        deletedCount:
+          result.count,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+

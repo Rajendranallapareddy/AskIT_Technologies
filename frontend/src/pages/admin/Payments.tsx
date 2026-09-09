@@ -1,600 +1,1582 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Download, TrendingUp, CheckCircle2, XCircle, Clock, Plus, ShieldCheck,
-  MoreVertical, Receipt, CalendarClock, ThumbsUp, ThumbsDown, Layers, X, Filter,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
+import {
+  ArrowLeft,
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  CreditCard,
+  Download,
+  GraduationCap,
+  IndianRupee,
+  Plus,
+  Receipt,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Users,
+  WalletCards,
+  XCircle,
 } from 'lucide-react';
+
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { useAdminLinks } from './_links';
-import { adminApi, adminPaymentApi } from '../../api/endpoints';
+import {
+  adminApi,
+  adminPaymentApi,
+} from '../../api/endpoints';
 import { useToast } from '../../hooks/useToast';
-import { getErrorMessage, classNames } from '../../utils/helpers';
-import { formatDateTime, formatMoney } from '../../utils/formatters';
-import DataTable, { Column } from '../../components/admin/DataTable';
-import StatsCard from '../../components/admin/StatsCard';
-import StatusBadge from '../../components/common/StatusBadge';
-import SearchBar from '../../components/common/SearchBar';
-import Pagination from '../../components/common/Pagination';
+import { getErrorMessage } from '../../utils/helpers';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
+import EmptyState from '../../components/common/EmptyState';
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
-import { getImageUrl } from '../../utils/imageUrl';
 
-const STATUS_TABS = [
-  { label: 'All', value: '' },
-  { label: 'Success', value: 'SUCCESS' },
-  { label: 'Pending', value: 'PENDING' },
-  { label: 'Pending Approval', value: 'PENDING_APPROVAL' },
-  { label: 'Failed', value: 'FAILED' },
-  { label: 'Refunded', value: 'REFUNDED' },
-];
+type ViewMode =
+  | 'courses'
+  | 'students'
+  | 'student';
 
-export default function AdminPayments() {
-  const links = useAdminLinks();
-  const [payments, setPayments] = useState<any[] | null>(null);
-  const [analytics, setAnalytics] = useState<any>(null);
-  const [internships, setInternships] = useState<any[]>([]);
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
-  const [method, setMethod] = useState('');
-  const [internshipId, setInternshipId] = useState('');
-  const [installmentsOnly, setInstallmentsOnly] = useState(false);
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [offlineOpen, setOfflineOpen] = useState(false);
-  const [settleTarget, setSettleTarget] = useState<any>(null);
-  const [rejectTarget, setRejectTarget] = useState<any>(null);
-  const [dueDateTarget, setDueDateTarget] = useState<any>(null);
-  const [studentDrawerId, setStudentDrawerId] = useState<string | null>(null);
-  const [approvingId, setApprovingId] = useState<string | null>(null);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const toast = useToast();
+type PaymentStatus =
+  | 'SUCCESS'
+  | 'PENDING'
+  | 'PENDING_APPROVAL'
+  | 'FAILED'
+  | 'REFUNDED'
+  | 'PARTIALLY_REFUNDED'
+  | 'CANCELLED'
+  | string;
 
-  useEffect(() => {
-    adminPaymentApi.analytics().then((res) => setAnalytics(res.data.data)).catch(() => {});
-    adminApi.internships({ limit: 100 }).then((res) => setInternships(res.data.data)).catch(() => {});
-  }, []);
-
-  const load = () => {
-    setPayments(null);
-    adminPaymentApi
-      .list({
-        search: search || undefined,
-        status: status || undefined,
-        method: method || undefined,
-        internshipId: internshipId || undefined,
-        installmentsOnly: installmentsOnly ? 'true' : undefined,
-        from: from || undefined,
-        to: to || undefined,
-        page,
-        limit: 15,
-      })
-      .then((res) => {
-        setPayments(res.data.data);
-        setTotalPages(res.data.meta?.totalPages || 1);
-        setTotal(res.data.meta?.total || res.data.data.length);
-      })
-      .catch((err) => {
-        setPayments([]);
-        toast.error(getErrorMessage(err));
-      });
+type Internship = {
+  id: string;
+  title: string;
+  slug?: string;
+  fee?: number | string | null;
+  status?: string;
+  startDate?: string;
+  endDate?: string;
+  registrations?: any[];
+  _count?: {
+    registrations?: number;
   };
-  useEffect(() => {
-    const timer = setTimeout(load, 350);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status, method, internshipId, installmentsOnly, from, to, page]);
+};
 
-  const activeExtraFilterCount = [method, internshipId, from, to].filter(Boolean).length + (installmentsOnly ? 1 : 0);
+type StudentRow = {
+  registrationId: string;
+  registrationNo?: string | null;
+  registrationStatus?: string;
+  userId: string;
+  fullName: string;
+  email: string;
+  mobileNumber?: string;
+  profilePicture?: string | null;
+  appliedAt?: string;
+};
 
-  const clearExtraFilters = () => {
-    setMethod(''); setInternshipId(''); setFrom(''); setTo(''); setInstallmentsOnly(false); setPage(1);
-  };
+const money = (
+  value: unknown
+) => {
+  const amount =
+    Number(value || 0);
 
-  const handleExport = (format: 'csv' | 'excel') => {
-    const url = adminPaymentApi.exportUrl({ format, ...(status ? { status } : {}) });
-    window.open(url, '_blank');
-  };
+  return new Intl.NumberFormat(
+    'en-IN',
+    {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 2,
+    }
+  ).format(amount);
+};
 
-  const handleResend = async (id: string) => {
-    try { const res = await adminPaymentApi.resendReceipt(id); toast.success(res.data.message || 'Receipt sent'); }
-    catch (err) { toast.error(getErrorMessage(err)); }
-  };
+const dateTime = (
+  value?: string | null
+) => {
+  if (!value) return '—';
 
-  const handleApprove = async (id: string) => {
-    setApprovingId(id);
-    try {
-      const res = await adminPaymentApi.approve(id);
-      toast.success(res.data.message || 'Payment approved');
-      load();
-    } catch (err) { toast.error(getErrorMessage(err)); }
-    finally { setApprovingId(null); setOpenMenuId(null); }
-  };
+  const date =
+    new Date(value);
 
-  const statusCounts: Record<string, number> = useMemo(() => ({
-    SUCCESS: analytics?.successCount ?? 0,
-    PENDING: analytics?.pendingCount ?? 0,
-    PENDING_APPROVAL: analytics?.pendingApprovalCount ?? 0,
-    FAILED: analytics?.failedCount ?? 0,
-    REFUNDED: analytics?.refundedCount ?? 0,
-  }), [analytics]);
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return '—';
+  }
 
-  const columns: Column<any>[] = [
-    { header: 'Payment', render: (p) => (
-      <div>
-        <p className="font-mono text-xs text-navy-500">{p.paymentNo}</p>
-        <p className="font-bold text-navy-900 mt-0.5">{formatMoney(p.totalAmount)}</p>
-      </div>
-    ) },
-    { header: 'Student', render: (p) => (
-      <button
-        onClick={(e) => { e.stopPropagation(); setStudentDrawerId(p.userId); }}
-        className="text-left hover:text-orange-600 transition group"
-      >
-        <p className="font-semibold text-navy-800 group-hover:text-orange-600">{p.user.fullName}</p>
-        <p className="text-xs text-navy-400">{p.user.email}</p>
-      </button>
-    ) },
-    { header: 'Internship', render: (p) => (
-      <div>
-        <p className="text-navy-800">{p.internship.title}</p>
-        {p.installmentPlanId && (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded mt-1">
-            <Layers className="w-2.5 h-2.5" /> Installment {p.installmentIndex}
-          </span>
-        )}
-      </div>
-    ) },
-    { header: 'Method', render: (p) => <span className="text-navy-600">{p.method || '—'}</span> },
-    { header: 'Due Date', render: (p) => <span className="text-navy-600">{p.dueDate ? formatDateTime(p.dueDate).split(',')[0] : '—'}</span> },
-    { header: 'Status', render: (p) => (
-      <div className="flex flex-col gap-1 items-start">
-        <StatusBadge status={p.status} />
-        {p.studentReference && (
-          <span className="text-[10px] font-bold text-green-700 bg-green-50 px-1.5 py-0.5 rounded" title={`Reference: ${p.studentReference}`}>
-            Ref: {p.studentReference}
-          </span>
-        )}
-      </div>
-    ) },
-    { header: 'Date', render: (p) => <span className="text-navy-500 text-xs">{formatDateTime(p.createdAt)}</span> },
-    { header: '', className: 'text-right', render: (p) => (
-      <PaymentActionsMenu
-        payment={p}
-        isOpen={openMenuId === p.id}
-        onToggle={() => setOpenMenuId(openMenuId === p.id ? null : p.id)}
-        onClose={() => setOpenMenuId(null)}
-        approving={approvingId === p.id}
-        onResend={() => handleResend(p.id)}
-        onApprove={() => handleApprove(p.id)}
-        onReject={() => { setRejectTarget(p); setOpenMenuId(null); }}
-        onMarkPaid={() => { setSettleTarget(p); setOpenMenuId(null); }}
-        onSetDueDate={() => { setDueDateTarget(p); setOpenMenuId(null); }}
-        onViewStudent={() => { setStudentDrawerId(p.userId); setOpenMenuId(null); }}
-      />
-    ) },
-  ];
+  return new Intl.DateTimeFormat(
+    'en-IN',
+    {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Kolkata',
+    }
+  ).format(date);
+};
+
+const initials = (
+  name: string
+) =>
+  String(name || 'S')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(
+      (part) =>
+        part[0]
+          ?.toUpperCase()
+    )
+    .join('');
+
+const statusTheme = (
+  status: PaymentStatus
+) => {
+  switch (status) {
+    case 'SUCCESS':
+      return {
+        label: 'Paid',
+        bg: '#ECFDF3',
+        color: '#15803D',
+        border: '#BBF7D0',
+      };
+
+    case 'PENDING_APPROVAL':
+      return {
+        label: 'Awaiting Approval',
+        bg: '#FFF7ED',
+        color: '#EA580C',
+        border: '#FED7AA',
+      };
+
+    case 'FAILED':
+      return {
+        label: 'Failed',
+        bg: '#FEF2F2',
+        color: '#DC2626',
+        border: '#FECACA',
+      };
+
+    case 'REFUNDED':
+    case 'PARTIALLY_REFUNDED':
+      return {
+        label:
+          status ===
+          'PARTIALLY_REFUNDED'
+            ? 'Partially Refunded'
+            : 'Refunded',
+        bg: '#F5F3FF',
+        color: '#7C3AED',
+        border: '#DDD6FE',
+      };
+
+    case 'CANCELLED':
+      return {
+        label: 'Cancelled',
+        bg: '#F8FAFC',
+        color: '#64748B',
+        border: '#CBD5E1',
+      };
+
+    default:
+      return {
+        label: 'Pending',
+        bg: '#EFF6FF',
+        color: '#2563EB',
+        border: '#BFDBFE',
+      };
+  }
+};
+
+function StatusBadge({
+  status,
+}: {
+  status: PaymentStatus;
+}) {
+  const theme =
+    statusTheme(status);
 
   return (
-    <DashboardLayout links={links} title="Admin Portal" pageTitle="Payments">
-      <div className="h-[calc(100vh-110px)] overflow-y-auto overflow-x-hidden pr-1 pb-32">
-        {analytics && (
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4 mb-6">
-            <StatsCard icon={TrendingUp}
-  label="Total Revenue"
-  value={formatMoney(
-    analytics.totalRevenue
-  )}
-  accent="green"
-/>
-
-<StatsCard
-  icon={CheckCircle2}
-  label="Successful"
-  value={
-    analytics.successCount
-  }
-  accent="navy"
-/>
-
-<StatsCard
-  icon={ShieldCheck}
-  label="Awaiting Approval"
-  value={
-    analytics.pendingApprovalCount ??
-    0
-  }
-  accent="orange"
-/>
-
-<StatsCard
-  icon={XCircle}
-  label="Failed"
-  value={
-    analytics.failedCount
-  }
-  accent="red"
-/>
-
-<StatsCard
-  icon={Clock}
-  label="Pending"
-  value={
-    analytics.pendingCount
-  }
-  accent="orange"
-/>
-          </div>
-        )}
-
-        <div className="flex items-center gap-1 mb-4 border-b border-navy-100 overflow-x-auto">
-          {STATUS_TABS.map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => { setPage(1); setStatus(tab.value); }}
-              className={classNames(
-                'px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 transition -mb-px',
-                status === tab.value ? 'border-orange-500 text-navy-900' : 'border-transparent text-navy-400 hover:text-navy-600'
-              )}
-            >
-              {tab.label}
-              {tab.value && statusCounts[tab.value] !== undefined && (
-                <span className={classNames('ml-1.5 text-xs px-1.5 py-0.5 rounded-full', status === tab.value ? 'bg-orange-100 text-orange-700' : 'bg-navy-50 text-navy-400')}>
-                  {statusCounts[tab.value]}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between mb-3">
-          <div className="flex flex-1 gap-3 w-full">
-            <SearchBar value={search} onChange={(v) => { setPage(1); setSearch(v); }} placeholder="Search by name, email, payment no…" />
-            <button
-              onClick={() => setMoreFiltersOpen((v) => !v)}
-              className={classNames(
-                'shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-xl border text-sm font-semibold transition',
-                activeExtraFilterCount > 0 ? 'border-orange-300 bg-orange-50 text-orange-700' : 'border-navy-200 text-navy-600 hover:bg-navy-50'
-              )}
-            >
-              <Filter className="w-4 h-4" /> Filters
-              {activeExtraFilterCount > 0 && <span className="bg-orange-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">{activeExtraFilterCount}</span>}
-            </button>
-          </div>
-          <div className="flex gap-2 shrink-0">
-            <Button variant="outline" className="!py-2 text-xs" icon={<Download className="w-3.5 h-3.5" />} onClick={() => handleExport('csv')}>CSV</Button>
-            <Button variant="outline" className="!py-2 text-xs" icon={<Download className="w-3.5 h-3.5" />} onClick={() => handleExport('excel')}>Excel</Button>
-            <Button className="!py-2 text-xs" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setOfflineOpen(true)}>Record Offline</Button>
-          </div>
-        </div>
-
-        {moreFiltersOpen && (
-          <div className="card p-4 mb-4 grid sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
-            <div>
-              <label className="label">Method</label>
-              <select className="input-field" value={method} onChange={(e) => { setPage(1); setMethod(e.target.value); }}>
-                <option value="">Any</option>
-                <option value="CARD">Card</option>
-                <option value="UPI">UPI</option>
-                <option value="NETBANKING">Netbanking</option>
-                <option value="BANK_TRANSFER">Bank Transfer</option>
-                <option value="OFFLINE">Offline / Cash</option>
-              </select>
-            </div>
-            <div>
-              <label className="label">Internship</label>
-              <select className="input-field" value={internshipId} onChange={(e) => { setPage(1); setInternshipId(e.target.value); }}>
-                <option value="">All internships</option>
-                {internships.map((i) => <option key={i.id} value={i.id}>{i.title}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">From</label>
-              <input type="date" className="input-field" value={from} onChange={(e) => { setPage(1); setFrom(e.target.value); }} />
-            </div>
-            <div>
-              <label className="label">To</label>
-              <input type="date" className="input-field" value={to} onChange={(e) => { setPage(1); setTo(e.target.value); }} />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-2 text-sm font-semibold text-navy-600 cursor-pointer">
-                <input type="checkbox" className="w-4 h-4" checked={installmentsOnly} onChange={(e) => { setPage(1); setInstallmentsOnly(e.target.checked); }} />
-                Installments only
-              </label>
-              {activeExtraFilterCount > 0 && (
-                <button onClick={clearExtraFilters} className="text-xs font-semibold text-navy-400 hover:text-red-500 flex items-center gap-1 ml-auto">
-                  <X className="w-3.5 h-3.5" /> Clear
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        <p className="text-xs text-navy-400 mb-2">{payments ? `${total} payment${total === 1 ? '' : 's'} found` : 'Loading…'}</p>
-
-        <div className="relative overflow-visible pb-40">
-          <DataTable columns={columns} rows={payments} keyField={(p) => p.id} emptyTitle="No payments found" />
-        </div>
-        <Pagination page={page} totalPages={totalPages} onChange={setPage} />
-      </div>
-
-      <OfflinePaymentModal isOpen={offlineOpen} onClose={() => setOfflineOpen(false)} onSuccess={load} />
-      <SettlePaymentModal payment={settleTarget} onClose={() => setSettleTarget(null)} onSuccess={load} />
-      <RejectPaymentModal payment={rejectTarget} onClose={() => setRejectTarget(null)} onSuccess={load} />
-      <DueDateModal payment={dueDateTarget} onClose={() => setDueDateTarget(null)} onSuccess={load} />
-      <StudentPaymentDrawer userId={studentDrawerId} onClose={() => setStudentDrawerId(null)} onChanged={load} />
-    </DashboardLayout>
+    <span
+      className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap"
+      style={{
+        background:
+          theme.bg,
+        color:
+          theme.color,
+        borderColor:
+          theme.border,
+      }}
+    >
+      {theme.label}
+    </span>
   );
-
 }
 
-// Compact per-row action menu (kebab button + dropdown) — replaces a row
-// of stacked text links that used to wrap onto multiple lines and clash
-// with the installment badge above it.
-function PaymentActionsMenu({
-  payment, isOpen, onToggle, onClose, approving,
-  onResend, onApprove, onReject, onMarkPaid, onSetDueDate, onViewStudent,
+function StatCard({
+  title,
+  value,
+  icon,
+  accent,
+  helper,
 }: {
-  payment: any; isOpen: boolean; onToggle: () => void; onClose: () => void; approving: boolean;
-  onResend: () => void; onApprove: () => void; onReject: () => void; onMarkPaid: () => void; onSetDueDate: () => void; onViewStudent: () => void;
+  title: string;
+  value: string | number;
+  icon: React.ReactNode;
+  accent: string;
+  helper?: string;
 }) {
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
-
-  const hasActions =
-    (payment.status === 'SUCCESS' && payment.receipt) ||
-    payment.status === 'PENDING_APPROVAL' ||
-    payment.status === 'PENDING' ||
-    payment.status === 'FAILED' ||
-    (payment.installmentPlanId && payment.status !== 'SUCCESS');
-
-  const updateMenuPosition = () => {
-    if (!buttonRef.current) return;
-
-    const rect = buttonRef.current.getBoundingClientRect();
-    const menuWidth = 208;
-    const menuHeight = 210;
-    const spacing = 6;
-
-    let left = rect.right - menuWidth;
-    if (left < 8) left = 8;
-    if (left + menuWidth > window.innerWidth - 8) left = window.innerWidth - menuWidth - 8;
-
-    const spaceBelow = window.innerHeight - rect.bottom;
-    let top = spaceBelow >= menuHeight ? rect.bottom + spacing : rect.top - menuHeight - spacing;
-    if (top < 8) top = 8;
-
-    setMenuPosition({ top, left });
-  };
-
-  const handleToggle = () => {
-    if (!isOpen) updateMenuPosition();
-    onToggle();
-  };
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    updateMenuPosition();
-    const handleWindowChange = () => updateMenuPosition();
-
-    window.addEventListener('resize', handleWindowChange);
-    window.addEventListener('scroll', handleWindowChange, true);
-
-    return () => {
-      window.removeEventListener('resize', handleWindowChange);
-      window.removeEventListener('scroll', handleWindowChange, true);
-    };
-  }, [isOpen]);
-
   return (
-    <div className="inline-block text-left" onClick={(e) => e.stopPropagation()}>
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={handleToggle}
-        className="p-2 rounded-lg hover:bg-navy-50 text-navy-400 hover:text-navy-700"
-        aria-label="Payment actions"
-      >
-        <MoreVertical className="w-4 h-4" />
-      </button>
+    <div className="rounded-2xl border border-navy-100 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-center gap-3">
+        <div
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+          style={{
+            background:
+              `${accent}14`,
+            color: accent,
+          }}
+        >
+          {icon}
+        </div>
 
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-[9998]" onClick={onClose} />
-          <div
-            className="fixed w-52 bg-white rounded-xl shadow-2xl border border-navy-100 py-1.5 z-[9999]"
-            style={{ top: `${menuPosition.top}px`, left: `${menuPosition.left}px` }}
-          >
-            <button onClick={onViewStudent} className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-navy-600 hover:bg-navy-50 flex items-center gap-2">
-              View Student History
-            </button>
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-navy-400">
+            {title}
+          </p>
 
-            {payment.status === 'SUCCESS' && payment.receipt && (
-              <button onClick={onResend} className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-orange-600 hover:bg-orange-50 flex items-center gap-2">
-                <Receipt className="w-3.5 h-3.5" /> Resend Receipt
-              </button>
-            )}
+          <p className="mt-0.5 truncate text-xl font-bold text-navy-900">
+            {value}
+          </p>
 
-            {payment.status === 'PENDING_APPROVAL' && (
-              <>
-                <button onClick={onApprove} disabled={approving} className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-green-600 hover:bg-green-50 flex items-center gap-2 disabled:opacity-50">
-                  <ThumbsUp className="w-3.5 h-3.5" /> {approving ? 'Approving…' : 'Approve'}
-                </button>
-                <button onClick={onReject} className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2">
-                  <ThumbsDown className="w-3.5 h-3.5" /> Reject
-                </button>
-              </>
-            )}
-
-            {(payment.status === 'PENDING' || payment.status === 'FAILED') && (
-              <button onClick={onMarkPaid} className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-green-600 hover:bg-green-50 flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Mark Paid
-              </button>
-            )}
-
-            {payment.installmentPlanId && payment.status !== 'SUCCESS' && (
-              <button onClick={onSetDueDate} className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-navy-600 hover:bg-navy-50 flex items-center gap-2">
-                <CalendarClock className="w-3.5 h-3.5" /> Set Due Date
-              </button>
-            )}
-
-            {!hasActions && <p className="px-3.5 py-2.5 text-xs text-navy-300">No actions available</p>}
-          </div>
-        </>
-      )}
+          {helper && (
+            <p className="mt-0.5 truncate text-[11px] text-navy-400">
+              {helper}
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
+export default function AdminPayments() {
+  const links =
+    useAdminLinks();
 
-// Super Admin's rejection path for a PENDING_APPROVAL payment — records a
-// reason the student can see, marks the payment FAILED, and leaves the
-// registration untouched so the student can simply retry.
-function RejectPaymentModal({ payment, onClose, onSuccess }: { payment: any; onClose: () => void; onSuccess: () => void }) {
-  const [reason, setReason] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const toast = useToast();
+  const toast =
+    useToast();
 
-  const handleSubmit = async () => {
-    if (!payment) return;
-    if (!reason.trim()) return toast.error('Please provide a reason for the student');
-    setIsSaving(true);
-    try {
-      const res = await adminPaymentApi.reject(payment.id, reason.trim());
-      toast.success(res.data.message || 'Payment rejected');
-      onSuccess();
-      onClose();
-      setReason('');
-    } catch (err) { toast.error(getErrorMessage(err)); }
-    finally { setIsSaving(false); }
-  };
+  const [
+    view,
+    setView,
+  ] =
+    useState<ViewMode>(
+      'courses'
+    );
 
-  return (
-    <Modal isOpen={!!payment} onClose={onClose} title="Reject Payment">
-      <div className="space-y-4">
-        {payment && (
-          <div className="bg-navy-50 rounded-lg p-3 text-sm">
-            <p className="font-bold text-navy-900">{payment.user?.fullName} — {payment.internship?.title}</p>
-            <p className="text-xs text-navy-500 font-mono mt-1">{payment.paymentNo}</p>
-            <p className="text-lg font-extrabold text-navy-900 mt-1">{formatMoney(payment.totalAmount)}</p>
-            {payment.studentReference && (
-              <p className="text-xs text-navy-600 mt-2 pt-2 border-t border-navy-100">
-                Student-submitted reference: <span className="font-mono font-bold text-navy-900">{payment.studentReference}</span>
-              </p>
-            )}
-          </div>
-        )}
-        <div>
-          <label className="label">Reason (shown to the student)</label>
-          <textarea rows={3} className="input-field" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Reference number doesn't match any transaction in our account" />
-        </div>
-        <Button className="w-full !bg-red-600 hover:!bg-red-700" isLoading={isSaving} onClick={handleSubmit}>Reject Payment</Button>
-      </div>
-    </Modal>
-  );
-}
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(true);
 
-// Lets a Super Admin/Admin set or move an installment's due date, instead
-// of it only ever being the automatic 30-days-apart default — e.g. to
-// line it up with a batch's real schedule or give a student more time.
-function DueDateModal({ payment, onClose, onSuccess }: { payment: any; onClose: () => void; onSuccess: () => void }) {
-  const [dueDate, setDueDate] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const toast = useToast();
+  const [
+    detailLoading,
+    setDetailLoading,
+  ] =
+    useState(false);
+
+  const [
+    internships,
+    setInternships,
+  ] =
+    useState<
+      Internship[]
+    >([]);
+
+  const [
+    recentPayments,
+    setRecentPayments,
+  ] =
+    useState<any[]>([]);
+
+  const [
+    analytics,
+    setAnalytics,
+  ] =
+    useState<any>(
+      null
+    );
+
+  const [
+    selectedInternship,
+    setSelectedInternship,
+  ] =
+    useState<
+      Internship | null
+    >(null);
+
+  const [
+    students,
+    setStudents,
+  ] =
+    useState<
+      StudentRow[]
+    >([]);
+
+  const [
+    selectedStudent,
+    setSelectedStudent,
+  ] =
+    useState<
+      StudentRow | null
+    >(null);
+
+  const [
+    studentHistory,
+    setStudentHistory,
+  ] =
+    useState<any>(
+      null
+    );
+
+  const [
+    search,
+    setSearch,
+  ] =
+    useState('');
+
+  const [
+    refreshing,
+    setRefreshing,
+  ] =
+    useState(false);
+
+  const [
+    offlineOpen,
+    setOfflineOpen,
+  ] =
+    useState(false);
+
+  const loadDashboard =
+    async (
+      silent = false
+    ) => {
+      if (!silent) {
+        setLoading(true);
+      } else {
+        setRefreshing(true);
+      }
+
+      try {
+        const [
+          internshipResponse,
+          paymentResponse,
+          analyticsResponse,
+        ] =
+          await Promise.all([
+            adminApi.internships({
+              page: 1,
+              limit: 100,
+            }),
+
+            adminPaymentApi.list({
+              page: 1,
+              limit: 12,
+            }),
+
+            adminPaymentApi.analytics(),
+          ]);
+
+        const courseData =
+          Array.isArray(
+            internshipResponse
+              .data?.data
+          )
+            ? internshipResponse
+                .data.data
+            : [];
+
+        const paymentData =
+          Array.isArray(
+            paymentResponse
+              .data?.data
+          )
+            ? paymentResponse
+                .data.data
+            : [];
+
+        setInternships(
+          courseData
+        );
+
+        setRecentPayments(
+          [...paymentData].sort(
+            (
+              a: any,
+              b: any
+            ) =>
+              new Date(
+                b.createdAt
+              ).getTime() -
+              new Date(
+                a.createdAt
+              ).getTime()
+          )
+        );
+
+        setAnalytics(
+          analyticsResponse
+            .data?.data ||
+            null
+        );
+      } catch (err) {
+        toast.error(
+          getErrorMessage(
+            err
+          )
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    };
 
   useEffect(() => {
-    if (payment?.dueDate) setDueDate(new Date(payment.dueDate).toISOString().slice(0, 10));
-  }, [payment]);
+    void loadDashboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleSubmit = async () => {
-    if (!payment) return;
-    if (!dueDate) return toast.error('Please pick a due date');
-    setIsSaving(true);
-    try {
-      const res = await adminPaymentApi.updateDueDate(payment.id, dueDate);
-      toast.success(res.data.message || 'Due date updated');
-      onSuccess();
-      onClose();
-    } catch (err) { toast.error(getErrorMessage(err)); }
-    finally { setIsSaving(false); }
-  };
+  const openCourse =
+    async (
+      internship:
+        Internship
+    ) => {
+      setSelectedInternship(
+        internship
+      );
+
+      setSelectedStudent(
+        null
+      );
+
+      setStudentHistory(
+        null
+      );
+
+      setView(
+        'students'
+      );
+
+      setDetailLoading(
+        true
+      );
+
+      try {
+        const response =
+          await adminApi.registrations(
+            internship.id,
+            {
+              page: 1,
+              limit: 100,
+            }
+          );
+
+        const rows =
+          Array.isArray(
+            response.data
+              ?.data
+          )
+            ? response.data
+                .data
+            : [];
+
+        const mapped:
+          StudentRow[] =
+          rows.map(
+            (
+              registration:
+                any
+            ) => {
+              const user =
+                registration
+                  .user ||
+                registration
+                  .student ||
+                {};
+
+              return {
+                registrationId:
+                  registration.id,
+
+                registrationNo:
+                  registration
+                    .registrationNo,
+
+                registrationStatus:
+                  registration
+                    .status,
+
+                userId:
+                  registration
+                    .userId ||
+                  user.id,
+
+                fullName:
+                  user.fullName ||
+                  user.name ||
+                  'Student',
+
+                email:
+                  user.email ||
+                  '—',
+
+                mobileNumber:
+                  user.mobileNumber,
+
+                profilePicture:
+                  user.profilePicture,
+
+                appliedAt:
+                  registration
+                    .appliedAt,
+              };
+            }
+          );
+
+        mapped.sort(
+          (
+            a,
+            b
+          ) =>
+            new Date(
+              b.appliedAt || 0
+            ).getTime() -
+            new Date(
+              a.appliedAt || 0
+            ).getTime()
+        );
+
+        setStudents(
+          mapped
+        );
+      } catch (err) {
+        setStudents(
+          []
+        );
+
+        toast.error(
+          getErrorMessage(
+            err
+          )
+        );
+      } finally {
+        setDetailLoading(
+          false
+        );
+      }
+    };
+
+  const openStudent =
+    async (
+      student:
+        StudentRow
+    ) => {
+      setSelectedStudent(
+        student
+      );
+
+      setView(
+        'student'
+      );
+
+      setDetailLoading(
+        true
+      );
+
+      try {
+        const response =
+          await adminPaymentApi
+            .studentHistory(
+              student.userId
+            );
+
+        setStudentHistory(
+          response.data
+            ?.data ||
+            null
+        );
+      } catch (err) {
+        setStudentHistory(
+          null
+        );
+
+        toast.error(
+          getErrorMessage(
+            err
+          )
+        );
+      } finally {
+        setDetailLoading(
+          false
+        );
+      }
+    };
+
+  const filteredCourses =
+    useMemo(
+      () => {
+        const query =
+          search
+            .trim()
+            .toLowerCase();
+
+        if (!query) {
+          return internships;
+        }
+
+        return internships
+          .filter(
+            (
+              internship
+            ) =>
+              internship.title
+                .toLowerCase()
+                .includes(
+                  query
+                )
+          );
+      },
+      [
+        internships,
+        search,
+      ]
+    );
+
+  const filteredStudents =
+    useMemo(
+      () => {
+        const query =
+          search
+            .trim()
+            .toLowerCase();
+
+        if (!query) {
+          return students;
+        }
+
+        return students
+          .filter(
+            (
+              student
+            ) =>
+              [
+                student.fullName,
+                student.email,
+                student.mobileNumber,
+                student.registrationNo,
+              ]
+                .filter(Boolean)
+                .some(
+                  (
+                    value
+                  ) =>
+                    String(
+                      value
+                    )
+                      .toLowerCase()
+                      .includes(
+                        query
+                      )
+                )
+          );
+      },
+      [
+        students,
+        search,
+      ]
+    );
+
+  const coursePayments =
+    useMemo(
+      () => {
+        if (
+          !selectedInternship
+        ) {
+          return [];
+        }
+
+        return (
+          studentHistory
+            ?.payments ||
+          []
+        )
+          .filter(
+            (
+              payment: any
+            ) =>
+              payment
+                .internshipId ===
+                selectedInternship
+                  .id ||
+              payment
+                .internship
+                ?.id ===
+                selectedInternship
+                  .id
+          )
+          .sort(
+            (
+              a: any,
+              b: any
+            ) =>
+              new Date(
+                b.createdAt
+              ).getTime() -
+              new Date(
+                a.createdAt
+              ).getTime()
+          );
+      },
+      [
+        studentHistory,
+        selectedInternship,
+      ]
+    );
+
+  const coursePlan =
+    useMemo(
+      () => {
+        if (
+          !selectedInternship
+        ) {
+          return null;
+        }
+
+        return (
+          studentHistory
+            ?.plans ||
+          []
+        ).find(
+          (
+            plan: any
+          ) =>
+            plan
+              .registration
+              ?.internship
+              ?.id ===
+            selectedInternship.id
+        ) || null;
+      },
+      [
+        studentHistory,
+        selectedInternship,
+      ]
+    );
+
+  const studentPaymentSummary =
+    useMemo(
+      () => {
+        const paid =
+          coursePayments
+            .filter(
+              (
+                payment:
+                  any
+              ) =>
+                payment
+                  .status ===
+                'SUCCESS'
+            )
+            .reduce(
+              (
+                total:
+                  number,
+                payment:
+                  any
+              ) =>
+                total +
+                Number(
+                  payment
+                    .totalAmount ||
+                    0
+                ),
+              0
+            );
+
+        const pending =
+          coursePayments
+            .filter(
+              (
+                payment:
+                  any
+              ) =>
+                [
+                  'PENDING',
+                  'PENDING_APPROVAL',
+                  'FAILED',
+                ].includes(
+                  payment
+                    .status
+                )
+            )
+            .reduce(
+              (
+                total:
+                  number,
+                payment:
+                  any
+              ) =>
+                total +
+                Number(
+                  payment
+                    .totalAmount ||
+                    0
+                ),
+              0
+            );
+
+        const paidCount =
+          coursePayments.filter(
+            (
+              payment:
+                any
+            ) =>
+              payment.status ===
+              'SUCCESS'
+          ).length;
+
+        const totalInstallments =
+          Number(
+            coursePlan
+              ?.numberOfInstallments ||
+              0
+          );
+
+        const remainingInstallments =
+          totalInstallments
+            ? Math.max(
+                0,
+                totalInstallments -
+                  paidCount
+              )
+            : 0;
+
+        return {
+          paid,
+          pending,
+          paidCount,
+          totalInstallments,
+          remainingInstallments,
+        };
+      },
+      [
+        coursePayments,
+        coursePlan,
+      ]
+    );
+
+  const exportRecentCsv =
+    () => {
+      if (
+        recentPayments.length ===
+        0
+      ) {
+        toast.error(
+          'No transactions to export'
+        );
+        return;
+      }
+
+      const rows = [
+        [
+          'Payment No',
+          'Student',
+          'Email',
+          'Course',
+          'Amount',
+          'Status',
+          'Method',
+          'Created At',
+        ],
+
+        ...recentPayments.map(
+          (
+            payment:
+              any
+          ) => [
+            payment.paymentNo ||
+              '',
+            payment.user
+              ?.fullName ||
+              '',
+            payment.user
+              ?.email ||
+              '',
+            payment.internship
+              ?.title ||
+              '',
+            String(
+              Number(
+                payment
+                  .totalAmount ||
+                  0
+              )
+            ),
+            payment.status ||
+              '',
+            payment.method ||
+              payment.gateway ||
+              '',
+            payment.createdAt ||
+              '',
+          ]
+        ),
+      ];
+
+      const csv =
+        rows
+          .map(
+            (
+              row
+            ) =>
+              row
+                .map(
+                  (
+                    value
+                  ) =>
+                    `"${String(
+                      value
+                    ).replace(
+                      /"/g,
+                      '""'
+                    )}"`
+                )
+                .join(',')
+          )
+          .join('\n');
+
+      const blob =
+        new Blob(
+          [csv],
+          {
+            type:
+              'text/csv;charset=utf-8;',
+          }
+        );
+
+      const url =
+        URL.createObjectURL(
+          blob
+        );
+
+      const anchor =
+        document.createElement(
+          'a'
+        );
+
+      anchor.href =
+        url;
+
+      anchor.download =
+        `askit-payments-${new Date()
+          .toISOString()
+          .slice(
+            0,
+            10
+          )}.csv`;
+
+      anchor.click();
+
+      URL.revokeObjectURL(
+        url
+      );
+    };
+
+  const goBack =
+    () => {
+      setSearch('');
+
+      if (
+        view ===
+        'student'
+      ) {
+        setView(
+          'students'
+        );
+
+        setSelectedStudent(
+          null
+        );
+
+        setStudentHistory(
+          null
+        );
+
+        return;
+      }
+
+      setView(
+        'courses'
+      );
+
+      setSelectedInternship(
+        null
+      );
+
+      setStudents(
+        []
+      );
+    };
+
+  if (loading) {
+    return (
+      <DashboardLayout
+        links={links}
+        title="Admin Portal"
+        pageTitle="Payments"
+      >
+        <LoadingSpinner
+          label="Loading payment workspace…"
+        />
+      </DashboardLayout>
+    );
+  }
 
   return (
-    <Modal isOpen={!!payment} onClose={onClose} title="Set Installment Due Date">
-      <div className="space-y-4">
-        {payment && (
-          <div className="bg-navy-50 rounded-lg p-3 text-sm">
-            <p className="font-bold text-navy-900">{payment.user?.fullName} — {payment.internship?.title}</p>
-            <p className="text-xs text-navy-500 font-mono mt-1">{payment.paymentNo}</p>
-            {payment.installmentPlanId && <p className="text-xs text-orange-600 font-bold mt-1">Installment {payment.installmentIndex}</p>}
-            <p className="text-lg font-extrabold text-navy-900 mt-1">{formatMoney(payment.totalAmount)}</p>
+    <DashboardLayout
+      links={links}
+      title="Admin Portal"
+      pageTitle="Payments"
+    >
+      <div className="space-y-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-lg font-bold text-navy-900">
+              Payment Management
+            </p>
           </div>
-        )}
-        <div>
-          <label className="label">Due Date</label>
-          <input type="date" className="input-field" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setOfflineOpen(true)}
+              className="inline-flex h-9 items-center gap-2 rounded-xl border border-orange-500 bg-orange-500 px-3 text-xs font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-orange-600 hover:shadow"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Record Offline
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                void loadDashboard(
+                  true
+                )
+              }
+              disabled={
+                refreshing
+              }
+              className="inline-flex h-9 items-center gap-2 rounded-xl border border-blue-200 bg-white px-3 text-xs font-semibold text-blue-600 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${
+                  refreshing
+                    ? 'animate-spin'
+                    : ''
+                }`}
+              />
+              Refresh
+            </button>
+
+            <button
+              type="button"
+              onClick={
+                exportRecentCsv
+              }
+              className="inline-flex h-9 items-center gap-2 rounded-xl border border-navy-200 bg-white px-3 text-xs font-semibold text-navy-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:text-blue-600 hover:shadow"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export Recent
+            </button>
+          </div>
         </div>
-        <Button className="w-full" isLoading={isSaving} onClick={handleSubmit}>Save Due Date</Button>
-      </div>
-    </Modal>
-  );
-}
 
-// Lets an admin mark an existing PENDING (or FAILED) payment — typically an
-// installment, or a "pay later" registration that was created while online
-// payment was unavailable — as collected, without having to re-enter the
-// student/internship/amount by hand. Reuses adminPaymentApi.settlePending,
-// which resolves those fields from the payment record itself.
-function SettlePaymentModal({ payment, onClose, onSuccess }: { payment: any; onClose: () => void; onSuccess: () => void }) {
-  const [method, setMethod] = useState('BANK_TRANSFER');
-  const [notes, setNotes] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const toast = useToast();
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <StatCard
+            title="Total Revenue"
+            value={money(
+              analytics
+                ?.totalRevenue ||
+                0
+            )}
+            icon={
+              <IndianRupee className="h-5 w-5" />
+            }
+            accent="#16A34A"
+          />
 
-  const handleSubmit = async () => {
-    if (!payment) return;
-    setIsSaving(true);
-    try {
-      const res = await adminPaymentApi.settlePending(payment.id, { method, notes });
-      toast.success(res.data.message || 'Payment marked as paid');
-      onSuccess();
-      onClose();
-      setNotes('');
-    } catch (err) { toast.error(getErrorMessage(err)); }
-    finally { setIsSaving(false); }
-  };
+          <StatCard
+            title="Successful"
+            value={
+              analytics
+                ?.successCount ||
+              0
+            }
+            icon={
+              <CheckCircle2 className="h-5 w-5" />
+            }
+            accent="#2563EB"
+          />
 
-  return (
-    <Modal isOpen={!!payment} onClose={onClose} title="Mark Payment as Paid">
-      <div className="space-y-4">
-        {payment && (
-          <div className="bg-navy-50 rounded-lg p-3 text-sm">
-            <p className="font-bold text-navy-900">{payment.user?.fullName} — {payment.internship?.title}</p>
-            <p className="text-xs text-navy-500 font-mono mt-1">{payment.paymentNo}</p>
-            <p className="text-lg font-extrabold text-navy-900 mt-1">{formatMoney(payment.totalAmount)}</p>
-            {payment.installmentPlanId && <p className="text-xs text-orange-600 font-bold mt-1">Installment {payment.installmentIndex}</p>}
-            {payment.studentReference && (
-              <p className="text-xs text-navy-600 mt-2 pt-2 border-t border-navy-100">
-                Student-submitted reference: <span className="font-mono font-bold text-navy-900">{payment.studentReference}</span>
-              </p>
+          <StatCard
+            title="Awaiting Approval"
+            value={
+              analytics
+                ?.pendingApprovalCount ||
+              0
+            }
+            icon={
+              <ShieldCheck className="h-5 w-5" />
+            }
+            accent="#F97316"
+          />
+
+          <StatCard
+            title="Pending"
+            value={
+              analytics
+                ?.pendingCount ||
+              0
+            }
+            icon={
+              <Clock3 className="h-5 w-5" />
+            }
+            accent="#D97706"
+          />
+
+          <StatCard
+            title="Failed"
+            value={
+              analytics
+                ?.failedCount ||
+              0
+            }
+            icon={
+              <XCircle className="h-5 w-5" />
+            }
+            accent="#DC2626"
+          />
+        </div>
+
+        {view === 'courses' && (
+          <>
+            <section className="rounded-2xl border border-navy-100 bg-white shadow-sm">
+              <div className="flex flex-col gap-3 border-b border-navy-100 px-4 py-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="font-bold text-navy-900">
+                    Recent Transactions
+                  </p>
+                  <p className="mt-0.5 text-xs text-navy-400">
+                    Latest transactions are always shown first.
+                  </p>
+                </div>
+                <span className="text-xs font-medium text-navy-400">
+                  Showing latest {recentPayments.length}
+                </span>
+              </div>
+
+              {recentPayments.length === 0 ? (
+                <div className="p-8">
+                  <EmptyState
+                    icon={<Receipt className="h-8 w-8" />}
+                    title="No transactions yet"
+                    description="New payments will appear here automatically with the latest transaction first."
+                  />
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-[950px] w-full">
+                    <thead>
+                      <tr className="border-b border-navy-100 bg-navy-50/40 text-left">
+                        <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-navy-400">Date</th>
+                        <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-navy-400">Student</th>
+                        <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-navy-400">Course</th>
+                        <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-navy-400">Payment</th>
+                        <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-navy-400">Amount</th>
+                        <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-navy-400">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recentPayments.map((payment: any) => (
+                        <tr key={payment.id} className="border-b border-navy-50 transition-colors hover:bg-blue-50/30">
+                          <td className="px-4 py-3 text-xs text-navy-500">{dateTime(payment.createdAt)}</td>
+                          <td className="px-4 py-3">
+                            <p className="text-sm font-semibold text-navy-800">{payment.user?.fullName || '—'}</p>
+                            <p className="text-[11px] text-navy-400">{payment.user?.email || ''}</p>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-navy-700">{payment.internship?.title || '—'}</td>
+                          <td className="px-4 py-3">
+                            <p className="text-xs font-semibold text-navy-700">{payment.paymentNo || '—'}</p>
+                            <p className="text-[11px] text-navy-400">
+                              {payment.installmentIndex ? `Installment ${payment.installmentIndex}` : payment.method || payment.gateway || 'Payment'}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3 text-sm font-bold text-navy-900">{money(payment.totalAmount)}</td>
+                          <td className="px-4 py-3"><StatusBadge status={payment.status} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-2xl border border-navy-100 bg-white p-4 shadow-sm">
+              <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="font-bold text-navy-900">Courses</p>
+                  <p className="mt-0.5 text-xs text-navy-400">
+                    Select a course to see every registered student and their payment position.
+                  </p>
+                </div>
+
+                <div className="relative w-full md:w-80">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-navy-300" />
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search courses…"
+                    className="input-field !pl-9"
+                  />
+                </div>
+              </div>
+
+              {filteredCourses.length === 0 ? (
+                <EmptyState
+                  icon={<GraduationCap className="h-8 w-8" />}
+                  title="No courses found"
+                  description="Courses with registrations will appear here."
+                />
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {filteredCourses.map((internship) => {
+                    const coursePaymentRows = recentPayments.filter((payment: any) =>
+                      payment.internshipId === internship.id || payment.internship?.id === internship.id
+                    );
+
+                    const recentRevenue = coursePaymentRows
+                      .filter((payment: any) => payment.status === 'SUCCESS')
+                      .reduce((sum: number, payment: any) => sum + Number(payment.totalAmount || 0), 0);
+
+                    return (
+                      <button
+                        key={internship.id}
+                        type="button"
+                        onClick={() => void openCourse(internship)}
+                        className="group rounded-2xl border border-navy-100 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-blue-200 hover:shadow-md"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition-colors group-hover:bg-blue-100">
+                              <GraduationCap className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold text-navy-900">{internship.title}</p>
+                              <p className="mt-0.5 text-[11px] text-navy-400">{internship.status || 'Course'}</p>
+                            </div>
+                          </div>
+                          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-navy-300 transition-transform group-hover:translate-x-1 group-hover:text-blue-600" />
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-2">
+                          <div className="rounded-xl bg-navy-50/60 p-2.5">
+                            <p className="text-[10px] font-semibold uppercase text-navy-400">Registered</p>
+                            <p className="mt-0.5 text-sm font-bold text-navy-800">
+                              {internship._count?.registrations ?? internship.registrations?.length ?? 'View'}
+                            </p>
+                          </div>
+                          <div className="rounded-xl bg-green-50/60 p-2.5">
+                            <p className="text-[10px] font-semibold uppercase text-green-600">Recent paid</p>
+                            <p className="mt-0.5 text-sm font-bold text-green-700">{money(recentRevenue)}</p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          </>
+        )}
+
+        {view === 'students' && selectedInternship && (
+          <section className="rounded-2xl border border-navy-100 bg-white shadow-sm">
+            <div className="border-b border-navy-100 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={goBack}
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-navy-100 bg-white text-navy-500 transition-all hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </button>
+
+                  <div>
+                    <p className="font-bold text-navy-900">{selectedInternship.title}</p>
+                    <p className="text-xs text-navy-400">Registered Students · {students.length}</p>
+                  </div>
+                </div>
+
+                <div className="relative w-full lg:w-96">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-navy-300" />
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search student, email or registration no…"
+                    className="input-field !pl-9"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {detailLoading ? (
+              <div className="p-10">
+                <LoadingSpinner label="Loading registered students…" />
+              </div>
+            ) : filteredStudents.length === 0 ? (
+              <div className="p-10">
+                <EmptyState
+                  icon={<Users className="h-8 w-8" />}
+                  title="No registered students"
+                  description="Students registered for this course will appear here."
+                />
+              </div>
+            ) : (
+              <div className="divide-y divide-navy-50">
+                {filteredStudents.map((student, index) => (
+                  <button
+                    key={student.registrationId}
+                    type="button"
+                    onClick={() => void openStudent(student)}
+                    className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-blue-50/40"
+                  >
+                    <span className="w-7 shrink-0 text-center text-xs font-semibold text-navy-300">{index + 1}</span>
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-600">
+                      {initials(student.fullName)}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-navy-800">{student.fullName}</p>
+                      <p className="truncate text-[11px] text-navy-400">{student.email}</p>
+                    </div>
+
+                    <div className="hidden min-w-[150px] md:block">
+                      <p className="text-[10px] font-semibold uppercase text-navy-300">Registration</p>
+                      <p className="mt-0.5 truncate text-xs font-semibold text-navy-600">
+                        {student.registrationNo || 'Pending number'}
+                      </p>
+                    </div>
+
+                    <div className="hidden min-w-[130px] lg:block">
+                      <p className="text-[10px] font-semibold uppercase text-navy-300">Registered</p>
+                      <p className="mt-0.5 text-xs text-navy-600">{dateTime(student.appliedAt)}</p>
+                    </div>
+
+                    <ChevronRight className="h-4 w-4 shrink-0 text-navy-300 transition-transform group-hover:translate-x-1 group-hover:text-blue-600" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {view === 'student' && selectedInternship && selectedStudent && (
+          <div className="space-y-4">
+            <section className="rounded-2xl border border-navy-100 bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={goBack}
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-navy-100 bg-white text-navy-500 transition-all hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </button>
+
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-blue-600">
+                    {initials(selectedStudent.fullName)}
+                  </div>
+
+                  <div>
+                    <p className="font-bold text-navy-900">{selectedStudent.fullName}</p>
+                    <p className="text-xs text-navy-400">
+                      {selectedStudent.email} · {selectedInternship.title}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl bg-navy-50/60 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase text-navy-300">Registration No</p>
+                  <p className="text-xs font-bold text-navy-700">
+                    {selectedStudent.registrationNo || 'Not assigned'}
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            {detailLoading ? (
+              <div className="rounded-2xl border border-navy-100 bg-white p-10">
+                <LoadingSpinner label="Loading complete payment history…" />
+              </div>
+            ) : !studentHistory ? (
+              <div className="rounded-2xl border border-navy-100 bg-white p-10">
+                <EmptyState
+                  icon={<WalletCards className="h-8 w-8" />}
+                  title="Payment details unavailable"
+                  description="No payment information is available for this student."
+                />
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                  <StatCard
+                    title="Paid Amount"
+                    value={money(studentPaymentSummary.paid)}
+                    icon={<CheckCircle2 className="h-5 w-5" />}
+                    accent="#16A34A"
+                  />
+                  <StatCard
+                    title="Pending Amount"
+                    value={money(studentPaymentSummary.pending)}
+                    icon={<Clock3 className="h-5 w-5" />}
+                    accent="#F97316"
+                  />
+                  <StatCard
+                    title="Paid Installments"
+                    value={coursePlan ? `${studentPaymentSummary.paidCount}/${studentPaymentSummary.totalInstallments}` : studentPaymentSummary.paidCount}
+                    icon={<CreditCard className="h-5 w-5" />}
+                    accent="#2563EB"
+                  />
+                  <StatCard
+                    title="Remaining"
+                    value={coursePlan ? studentPaymentSummary.remainingInstallments : '—'}
+                    helper={coursePlan ? 'installments' : 'No installment plan'}
+                    icon={<CalendarDays className="h-5 w-5" />}
+                    accent="#7C3AED"
+                  />
+                  <StatCard
+                    title="Transactions"
+                    value={coursePayments.length}
+                    icon={<Receipt className="h-5 w-5" />}
+                    accent="#0F766E"
+                  />
+                </div>
+
+                {coursePlan && (
+                  <section className="rounded-2xl border border-navy-100 bg-white p-4 shadow-sm">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="font-bold text-navy-900">Installment Plan</p>
+                        <p className="mt-0.5 text-xs text-navy-400">
+                          {coursePlan.numberOfInstallments} installments · plan status {coursePlan.status}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="rounded-lg bg-green-50 px-2.5 py-1.5 font-semibold text-green-700">
+                          Paid {money(studentPaymentSummary.paid)}
+                        </span>
+                        <span className="rounded-lg bg-orange-50 px-2.5 py-1.5 font-semibold text-orange-700">
+                          Remaining {money(Math.max(0, Number(coursePlan.totalAmount || 0) - studentPaymentSummary.paid))}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                      {[...(coursePlan.payments || [])]
+                        .sort((a: any, b: any) => Number(a.installmentIndex || 0) - Number(b.installmentIndex || 0))
+                        .map((payment: any) => (
+                          <div key={payment.id} className="rounded-xl border border-navy-100 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-bold text-navy-800">
+                                Installment {payment.installmentIndex || '—'}
+                              </p>
+                              <StatusBadge status={payment.status} />
+                            </div>
+                            <p className="mt-2 text-base font-bold text-navy-900">{money(payment.totalAmount)}</p>
+                            <p className="mt-1 text-[11px] text-navy-400">Due: {dateTime(payment.dueDate)}</p>
+                          </div>
+                        ))}
+                    </div>
+                  </section>
+                )}
+
+                <section className="rounded-2xl border border-navy-100 bg-white shadow-sm">
+                  <div className="border-b border-navy-100 px-4 py-4">
+                    <p className="font-bold text-navy-900">Complete Payment History</p>
+                    <p className="mt-0.5 text-xs text-navy-400">Most recent transaction appears first.</p>
+                  </div>
+
+                  {coursePayments.length === 0 ? (
+                    <div className="p-10">
+                      <EmptyState
+                        icon={<Receipt className="h-8 w-8" />}
+                        title="No payments for this course"
+                        description="The student is registered, but no payment transaction has been recorded yet."
+                      />
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-[900px] w-full">
+                        <thead>
+                          <tr className="border-b border-navy-100 bg-navy-50/40 text-left">
+                            <th className="px-4 py-3 text-[11px] font-bold uppercase text-navy-400">Date</th>
+                            <th className="px-4 py-3 text-[11px] font-bold uppercase text-navy-400">Payment No</th>
+                            <th className="px-4 py-3 text-[11px] font-bold uppercase text-navy-400">Installment</th>
+                            <th className="px-4 py-3 text-[11px] font-bold uppercase text-navy-400">Amount</th>
+                            <th className="px-4 py-3 text-[11px] font-bold uppercase text-navy-400">Method</th>
+                            <th className="px-4 py-3 text-[11px] font-bold uppercase text-navy-400">Status</th>
+                          </tr>
+                        </thead>
+
+                        <tbody>
+                          {coursePayments.map((payment: any) => (
+                            <tr key={payment.id} className="border-b border-navy-50 transition-colors hover:bg-blue-50/30">
+                              <td className="px-4 py-3 text-xs text-navy-500">{dateTime(payment.paidAt || payment.createdAt)}</td>
+                              <td className="px-4 py-3 text-xs font-semibold text-navy-700">{payment.paymentNo || '—'}</td>
+                              <td className="px-4 py-3 text-xs text-navy-600">
+                                {payment.installmentIndex ? `#${payment.installmentIndex}` : 'Full Payment'}
+                              </td>
+                              <td className="px-4 py-3 text-sm font-bold text-navy-900">{money(payment.totalAmount)}</td>
+                              <td className="px-4 py-3 text-xs text-navy-600">{payment.method || payment.gateway || '—'}</td>
+                              <td className="px-4 py-3"><StatusBadge status={payment.status} /></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              </>
             )}
           </div>
         )}
-        <div>
-          <label className="label">Method</label>
-          <select className="input-field" value={method} onChange={(e) => setMethod(e.target.value)}>
-            <option value="BANK_TRANSFER">Bank Transfer</option>
-            <option value="OFFLINE">Cash</option>
-            <option value="UPI">UPI (manual)</option>
-          </select>
-        </div>
-        <div><label className="label">Notes</label><input className="input-field" value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
-        <Button className="w-full" isLoading={isSaving} onClick={handleSubmit}>Confirm & Mark Paid</Button>
       </div>
-    </Modal>
+
+      <OfflinePaymentModal
+        isOpen={offlineOpen}
+        onClose={() => setOfflineOpen(false)}
+        onSuccess={() => void loadDashboard(true)}
+      />
+    </DashboardLayout>
   );
 }
 
@@ -707,151 +1689,5 @@ function OfflinePaymentModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; 
         <Button className="w-full" isLoading={isSaving} onClick={handleSubmit} disabled={!form.userId || !form.internshipId || !form.amount}>Confirm & Record Payment</Button>
       </div>
     </Modal>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// STUDENT PAYMENT DRAWER — a slide-over panel showing one student's
-// complete payment picture: every registration, every installment plan's
-// progress, the full flat payment history, and their recent payment
-// notifications — so a Super Admin can review a student without piecing
-// it together from separate table rows.
-// ---------------------------------------------------------------------------
-function StudentPaymentDrawer({ userId, onClose, onChanged }: { userId: string | null; onClose: () => void; onChanged: () => void }) {
-  const [data, setData] = useState<any>(null);
-  const toast = useToast();
-
-  useEffect(() => {
-    if (!userId) { setData(null); return; }
-    adminPaymentApi.studentHistory(userId).then((res) => setData(res.data.data)).catch((err) => toast.error(getErrorMessage(err)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
-
-  if (!userId) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-navy-900/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-navy-50 w-full max-w-2xl h-full overflow-y-auto shadow-2xl animate-fade-up">
-        <div className="sticky top-0 bg-white border-b border-navy-100 px-6 py-4 flex items-center justify-between z-10">
-          <h3 className="font-bold text-lg text-navy-900">Student Payment History</h3>
-          <button onClick={onClose} className="text-navy-400 hover:text-navy-700"><X className="w-5 h-5" /></button>
-        </div>
-
-        {!data ? (
-          <div className="p-10 text-center text-navy-400 text-sm">Loading…</div>
-        ) : (
-          <div className="p-6 space-y-6">
-            {/* Profile header */}
-            <div className="card p-5 flex items-center gap-4">
-              <span className="w-14 h-14 rounded-full bg-navy-700 text-white font-bold flex items-center justify-center text-lg overflow-hidden shrink-0">
-                {data.student.profilePicture ? (
-                <img
-                  src={getImageUrl(data.student.profilePicture) ?? undefined}
-                  alt={data.student.fullName}
-                  className="w-full h-full object-cover"
-                />
-                ) : (
-                data.student.fullName
-                .split(' ')
-                .map((w: string) => w[0])
-                .slice(0, 2)
-                .join('')
-                .toUpperCase()
-              )}
-            </span>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-navy-900">{data.student.fullName}</p>
-                <p className="text-xs text-navy-500">{data.student.email}</p>
-                <p className="text-xs text-navy-400">{data.student.mobileNumber}</p>
-              </div>
-              <p className="text-xs text-navy-400">Joined {formatDateTime(data.student.createdAt).split(',')[0]}</p>
-            </div>
-
-            {/* Summary */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <SummaryTile label="Total Paid" value={formatMoney(data.summary.totalPaid)} accent="green" />
-              <SummaryTile label="Total Due" value={formatMoney(data.summary.totalDue)} accent="orange" />
-              <SummaryTile label="Payments" value={data.summary.paymentCount} accent="navy" />
-              <SummaryTile label="Registrations" value={data.summary.registrationCount} accent="navy" />
-            </div>
-
-            {/* Installment plans */}
-            {data.plans.length > 0 && (
-              <div>
-                <p className="text-xs font-bold text-navy-500 uppercase tracking-wide mb-2">Installment Plans</p>
-                <div className="space-y-3">
-                  {data.plans.map((plan: any) => {
-                    const planPayments = data.payments.filter((p: any) => p.installmentPlanId === plan.id);
-                    const paid = planPayments.filter((p: any) => p.status === 'SUCCESS').reduce((s: number, p: any) => s + Number(p.totalAmount), 0);
-                    const pct = Math.round((paid / Number(plan.totalAmount)) * 100);
-                    return (
-                      <div key={plan.id} className="card p-4">
-                        <div className="flex items-center justify-between">
-                          <p className="font-semibold text-navy-800 text-sm">{plan.registration?.internship?.title}</p>
-                          <span className={classNames('text-[10px] font-bold px-2 py-0.5 rounded-full', plan.status === 'COMPLETED' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700')}>
-                            {plan.status}
-                          </span>
-                        </div>
-                        <div className="w-full h-2 bg-navy-100 rounded-full mt-2.5 overflow-hidden">
-                          <div className="h-full bg-orange-500 rounded-full transition-all" style={{ width: `${Math.min(100, pct)}%` }} />
-                        </div>
-                        <p className="text-xs text-navy-500 mt-1.5">{formatMoney(paid)} of {formatMoney(plan.totalAmount)} paid ({pct}%) — {plan.numberOfInstallments} installments</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Full payment history */}
-            <div>
-              <p className="text-xs font-bold text-navy-500 uppercase tracking-wide mb-2">All Payments ({data.payments.length})</p>
-              <div className="card divide-y divide-navy-50">
-                {data.payments.length === 0 && <p className="p-4 text-sm text-navy-400">No payments yet.</p>}
-                {data.payments.map((p: any) => (
-                  <div key={p.id} className="p-3.5 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-navy-800 truncate">{p.internship.title}</p>
-                      <p className="text-xs text-navy-400 font-mono">{p.paymentNo} {p.installmentPlanId ? `· Inst. ${p.installmentIndex}` : ''}</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="font-bold text-navy-900 text-sm">{formatMoney(p.totalAmount)}</p>
-                      <StatusBadge status={p.status} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Recent payment notifications */}
-            {data.notifications.length > 0 && (
-              <div>
-                <p className="text-xs font-bold text-navy-500 uppercase tracking-wide mb-2">Recent Payment Notifications</p>
-                <div className="card divide-y divide-navy-50">
-                  {data.notifications.map((n: any) => (
-                    <div key={n.id} className="p-3.5">
-                      <p className="text-sm font-semibold text-navy-800">{n.title}</p>
-                      <p className="text-xs text-navy-500 mt-0.5">{n.message}</p>
-                      <p className="text-[11px] text-navy-300 mt-1">{formatDateTime(n.createdAt)}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SummaryTile({ label, value, accent }: { label: string; value: string | number; accent: 'green' | 'orange' | 'navy' }) {
-  const colors = { green: 'text-green-600', orange: 'text-orange-600', navy: 'text-navy-800' }[accent];
-  return (
-    <div className="card p-4">
-      <p className="text-[10px] font-bold text-navy-400 uppercase tracking-wide">{label}</p>
-      <p className={classNames('text-lg font-extrabold mt-0.5', colors)}>{value}</p>
-    </div>
   );
 }
