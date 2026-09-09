@@ -1188,25 +1188,18 @@ export const superAdminApi = {
       }
     ),
 
-  activityLogs: (
-    params?: any
-  ) =>
-    apiClient.get(
-      '/superadmin/activity-logs',
-      {
-        params,
-      }
-    ),
+  activityLogs: (params?: any) =>
+  apiClient.get('/admin/activity-logs', {
+    params,
+  }),
 
-  deleteActivityLog: (
-  id: string
-) =>
+deleteActivityLog: (id: string) =>
   apiClient.delete(
-    `/superadmin/activity-logs/${id}`
+    `/admin/activity-logs/${id}`
   ),
 
 deleteAllActivityLogs: () =>
   apiClient.delete(
-    '/superadmin/activity-logs'
+    '/admin/activity-logs'
   ),
 };
