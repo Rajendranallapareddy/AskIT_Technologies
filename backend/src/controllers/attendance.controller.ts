@@ -120,6 +120,67 @@ function optionalText(
   return text || null;
 }
 
+
+/**
+ * Session dates are stored as UTC instants in PostgreSQL.
+ *
+ * Preferred input from the frontend is ISO UTC:
+ *   2026-09-10T14:00:00.000Z
+ *
+ * For backward compatibility, if a client still sends a
+ * timezone-less datetime-local value such as:
+ *   2026-09-10T19:30
+ * we interpret it as IST (+05:30), not as Cloud Run's UTC.
+ */
+function parseSessionDate(
+  value: unknown
+): Date {
+  const raw =
+    String(value ?? '').trim();
+
+  if (!raw) {
+    throw new AppError(
+      'Session date and time are required',
+      400
+    );
+  }
+
+  const hasExplicitZone =
+    /(?:Z|[+-]\d{2}:\d{2})$/i.test(
+      raw
+    );
+
+  let input = raw;
+
+  if (!hasExplicitZone) {
+    const normalized =
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(
+        raw
+      )
+        ? `${raw}:00`
+        : raw;
+
+    input =
+      `${normalized}+05:30`;
+  }
+
+  const parsed =
+    new Date(input);
+
+  if (
+    Number.isNaN(
+      parsed.getTime()
+    )
+  ) {
+    throw new AppError(
+      'Please enter a valid session date and time',
+      400
+    );
+  }
+
+  return parsed;
+}
+
 // GET /api/users/attendance
 export async function getMyAttendance(
   req: AuthRequest,
@@ -263,18 +324,7 @@ export async function createSession(
     }
 
     const sessionDate =
-      new Date(date);
-
-    if (
-      Number.isNaN(
-        sessionDate.getTime()
-      )
-    ) {
-      throw new AppError(
-        'Please enter a valid session date and time',
-        400
-      );
-    }
+      parseSessionDate(date);
 
     const session =
       await prisma.attendanceSession.create({
@@ -396,22 +446,8 @@ export async function updateSession(
     if (
       date !== undefined
     ) {
-      const parsed =
-        new Date(date);
-
-      if (
-        Number.isNaN(
-          parsed.getTime()
-        )
-      ) {
-        throw new AppError(
-          'Please enter a valid session date and time',
-          400
-        );
-      }
-
       data.date =
-        parsed;
+        parseSessionDate(date);
     }
 
     if (
@@ -507,6 +543,13 @@ export async function listSessions(
   next: NextFunction
 ) {
   try {
+    res.set({
+      'Cache-Control':
+        'no-store, no-cache, must-revalidate, proxy-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+    });
+
     await ensureTrainerAssignedToInternship(
       req.user!.id,
       req.params
@@ -953,6 +996,13 @@ export async function getMyAvailableSessions(
   next: NextFunction
 ) {
   try {
+    res.set({
+      'Cache-Control':
+        'no-store, no-cache, must-revalidate, proxy-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+    });
+
     const approvedRegistrations =
       await prisma.registration.findMany({
         where: {

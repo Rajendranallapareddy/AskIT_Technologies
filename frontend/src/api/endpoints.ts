@@ -216,7 +216,18 @@ export const userApi = {
 
   sessions: () =>
     apiClient.get(
-      '/users/sessions'
+      '/users/sessions',
+      {
+        params: {
+          _t: Date.now(),
+        },
+        headers: {
+          'Cache-Control':
+            'no-cache',
+          Pragma:
+            'no-cache',
+        },
+      }
     ),
 };
 
@@ -240,7 +251,18 @@ export const trainerApi = {
     internshipId: string
   ) =>
     apiClient.get(
-      `/trainer/internships/${internshipId}/sessions`
+      `/trainer/internships/${internshipId}/sessions`,
+      {
+        params: {
+          _t: Date.now(),
+        },
+        headers: {
+          'Cache-Control':
+            'no-cache',
+          Pragma:
+            'no-cache',
+        },
+      }
     ),
 
   createSession: (

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import {
   Plus,
   CalendarCheck,
   Video,
   Pencil,
+  Link2,
   Trash2,
   Briefcase,
   Users,
@@ -14,7 +15,6 @@ import { TRAINER_LINKS } from './_links';
 import { trainerApi } from '../../api/endpoints';
 import { useToast } from '../../hooks/useToast';
 import { getErrorMessage } from '../../utils/helpers';
-import { formatDateTime } from '../../utils/formatters';
 import InternshipPicker, {
   useInternshipPicker,
 } from './_InternshipPicker';
@@ -32,31 +32,277 @@ const emptySessionForm = {
   passcode: '',
 };
 
-function toLocalDateTimeInput(
+
+const SESSION_TIME_ZONE = 'Asia/Kolkata';
+
+/**
+ * Formats a stored UTC/ISO date in Indian Standard Time.
+ * This guarantees trainers and students see the same class time.
+ */
+function formatSessionDateTime(
   value: string
 ) {
   if (!value) return '';
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  const pad = (
-    number: number
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(
+    'en-IN',
+    {
+      timeZone: SESSION_TIME_ZONE,
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }
+  ).format(date);
+}
+
+/**
+ * Converts the ISO value received from the API to the exact
+ * Asia/Kolkata wall-clock value required by <input type="datetime-local">.
+ */
+function toIndiaDateTimeInput(
+  value: string
+) {
+  if (!value) return '';
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const parts =
+    new Intl.DateTimeFormat(
+      'en-CA',
+      {
+        timeZone:
+          SESSION_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }
+    ).formatToParts(date);
+
+  const get = (
+    type: Intl.DateTimeFormatPartTypes
   ) =>
-    String(number).padStart(
-      2,
-      '0'
+    parts.find(
+      (part) =>
+        part.type === type
+    )?.value || '';
+
+  return `${get('year')}-${get(
+    'month'
+  )}-${get('day')}T${get(
+    'hour'
+  )}:${get('minute')}`;
+}
+
+/**
+ * datetime-local has no timezone information.
+ * Treat the trainer's entered value as IST (+05:30),
+ * then convert it to UTC ISO before sending it to the backend.
+ *
+ * Example:
+ * 2026-09-10T19:30 IST -> 2026-09-10T14:00:00.000Z
+ */
+function indiaDateTimeInputToIso(
+  value: string
+) {
+  const clean =
+    String(value || '').trim();
+
+  if (!clean) {
+    throw new Error(
+      'Session date and time are required'
+    );
+  }
+
+  const normalized =
+    clean.length === 16
+      ? `${clean}:00`
+      : clean;
+
+  const parsed =
+    new Date(
+      `${normalized}+05:30`
     );
 
-  return `${date.getFullYear()}-${pad(
-    date.getMonth() + 1
-  )}-${pad(
-    date.getDate()
-  )}T${pad(
-    date.getHours()
-  )}:${pad(
-    date.getMinutes()
-  )}`;
+  if (
+    Number.isNaN(
+      parsed.getTime()
+    )
+  ) {
+    throw new Error(
+      'Please select a valid session date and time'
+    );
+  }
+
+  return parsed.toISOString();
+}
+
+
+type SessionActionTone =
+  | 'blue'
+  | 'red'
+  | 'muted';
+
+function SessionActionButton({
+  tone,
+  disabled = false,
+  icon,
+  children,
+  onClick,
+  title,
+}: {
+  tone: SessionActionTone;
+  disabled?: boolean;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  onClick?: () => void;
+  title?: string;
+}) {
+  const [hovered, setHovered] =
+    useState(false);
+  const [pressed, setPressed] =
+    useState(false);
+
+  const palette = {
+    blue: {
+      border: '#7DB5FF',
+      text: '#1D63E9',
+      hoverBg: '#F2F7FF',
+      hoverBorder: '#4F9CFF',
+      ring:
+        'rgba(77, 156, 255, 0.20)',
+    },
+    red: {
+      border: '#FF7E7E',
+      text: '#F22626',
+      hoverBg: '#FFF4F4',
+      hoverBorder: '#FF5A5A',
+      ring:
+        'rgba(242, 38, 38, 0.14)',
+    },
+    muted: {
+      border: '#A6B5D9',
+      text: '#8DA1CF',
+      hoverBg: '#FFFFFF',
+      hoverBorder: '#A6B5D9',
+      ring: 'transparent',
+    },
+  } as const;
+
+  const colors =
+    palette[tone];
+
+  const style: CSSProperties = {
+    height: 36,
+    minWidth:
+      tone === 'muted'
+        ? 150
+        : tone === 'blue'
+          ? 110
+          : 96,
+    padding: '0 13px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    borderRadius: 10,
+    border:
+      `2px solid ${colors.border}`,
+    background:
+      !disabled && hovered
+        ? colors.hoverBg
+        : '#FFFFFF',
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: 600,
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+    cursor:
+      disabled
+        ? 'not-allowed'
+        : 'pointer',
+    opacity:
+      disabled ? 0.92 : 1,
+    boxShadow:
+      !disabled && hovered
+        ? `0 7px 18px ${colors.ring}`
+        : '0 1px 3px rgba(15, 35, 80, 0.04)',
+    transform:
+      disabled
+        ? 'none'
+        : pressed
+          ? 'translateY(0) scale(0.98)'
+          : hovered
+            ? 'translateY(-1px)'
+            : 'translateY(0)',
+    transition:
+      'background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease',
+    userSelect: 'none',
+    WebkitTapHighlightColor:
+      'transparent',
+    outline: 'none',
+  };
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={
+        disabled
+          ? undefined
+          : onClick
+      }
+      onMouseEnter={() => {
+        if (!disabled) {
+          setHovered(true);
+        }
+      }}
+      onMouseLeave={() => {
+        setHovered(false);
+        setPressed(false);
+      }}
+      onMouseDown={() => {
+        if (!disabled) {
+          setPressed(true);
+        }
+      }}
+      onMouseUp={() => {
+        if (!disabled) {
+          setPressed(false);
+        }
+      }}
+      onFocus={(event) => {
+        if (!disabled) {
+          event.currentTarget.style.boxShadow =
+            `0 0 0 4px ${colors.ring}`;
+        }
+      }}
+      onBlur={(event) => {
+        event.currentTarget.style.boxShadow =
+          '0 1px 3px rgba(15, 35, 80, 0.04)';
+      }}
+      title={title}
+      style={style}
+    >
+      {icon}
+      <span>{children}</span>
+    </button>
+  );
 }
 
 export default function Attendance() {
@@ -206,7 +452,7 @@ export default function Attendance() {
 
       setSessionForm({
         date:
-          toLocalDateTimeInput(
+          toIndiaDateTimeInput(
             session.date
           ),
 
@@ -248,9 +494,17 @@ export default function Attendance() {
         if (
           editingSession
         ) {
+          const payload = {
+            ...sessionForm,
+            date:
+              indiaDateTimeInputToIso(
+                sessionForm.date
+              ),
+          };
+
           await trainerApi.updateSession(
             editingSession.id,
-            sessionForm
+            payload
           );
 
           toast.success(
@@ -260,7 +514,13 @@ export default function Attendance() {
           const response =
             await trainerApi.createSession(
               internshipId,
-              sessionForm
+              {
+                ...sessionForm,
+                date:
+                  indiaDateTimeInputToIso(
+                    sessionForm.date
+                  ),
+              }
             );
 
           toast.success(
@@ -297,7 +557,7 @@ export default function Attendance() {
     async (session: any) => {
       const label =
         session.topic ||
-        formatDateTime(session.date);
+        formatSessionDateTime(session.date);
 
       const confirmed =
         window.confirm(
@@ -481,6 +741,7 @@ export default function Attendance() {
               onClick={
                 openNewSession
               }
+              className="!px-4 !py-2.5 !rounded-xl !text-sm shadow-md hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
               icon={
                 <Plus className="w-4 h-4" />
               }
@@ -493,7 +754,7 @@ export default function Attendance() {
             0 &&
             sessions !==
               null && (
-              <div className="mb-4 rounded-xl border border-navy-100 bg-white p-4 flex items-start gap-3">
+              <div className="mb-4 rounded-2xl border border-navy-100 bg-white px-5 py-3.5 flex items-start gap-3 shadow-sm">
                 <Users className="w-5 h-5 text-orange-500 mt-0.5" />
 
                 <div>
@@ -528,100 +789,211 @@ export default function Attendance() {
               description="Create your first session. Meeting details are optional."
             />
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3.5">
               {sessions.map(
                 (
                   session: any
                 ) => (
                   <div
-                    key={
-                      session.id
-                    }
-                    className="card p-5"
+                    key={session.id}
+                    className="card group"
+                    style={{
+                      padding: '18px 22px',
+                      borderRadius: 18,
+                      border: '1px solid #D7E2F5',
+                      background: '#FFFFFF',
+                      boxShadow:
+                        '0 4px 16px rgba(29, 63, 126, 0.05)',
+                      transition:
+                        'box-shadow 180ms ease, transform 180ms ease, border-color 180ms ease',
+                    }}
+                    onMouseEnter={(event) => {
+                      event.currentTarget.style.transform =
+                        'translateY(-2px)';
+                      event.currentTarget.style.boxShadow =
+                        '0 10px 26px rgba(29, 63, 126, 0.10)';
+                      event.currentTarget.style.borderColor =
+                        '#BFD3F3';
+                    }}
+                    onMouseLeave={(event) => {
+                      event.currentTarget.style.transform =
+                        'translateY(0)';
+                      event.currentTarget.style.boxShadow =
+                        '0 4px 16px rgba(29, 63, 126, 0.05)';
+                      event.currentTarget.style.borderColor =
+                        '#D7E2F5';
+                    }}
                   >
-                    <div className="flex items-center justify-between flex-wrap gap-3">
-                      <div>
-                        <p className="font-semibold text-navy-800">
-                          {formatDateTime(
-                            session.date
-                          )}
+                    <div className="flex items-center justify-between flex-wrap gap-5">
+                      <div className="flex items-center gap-4 min-w-0">
+                        <div
+                          className="shrink-0 flex items-center justify-center"
+                          style={{
+                            width: 44,
+                            height: 44,
+                            borderRadius: '50%',
+                            background: '#EEF5FF',
+                            color: '#1675FF',
+                          }}
+                        >
+                          <CalendarCheck
+                            style={{
+                              width: 21,
+                              height: 21,
+                              strokeWidth: 2.2,
+                            }}
+                          />
+                        </div>
 
-                          {session.topic &&
-                            ` — ${session.topic}`}
-                        </p>
+                        <div className="min-w-0">
+                          <p
+                            className="font-semibold text-navy-800"
+                            style={{
+                              fontSize: 16,
+                              lineHeight: 1.3,
+                              color: '#173575',
+                            }}
+                          >
+                            {formatSessionDateTime(
+                              session.date
+                            )}
+                            {session.topic &&
+                              ` — ${session.topic}`}
+                          </p>
 
-                        <p className="text-xs text-navy-400 mt-1">
-                          {
-                            session
-                              .records
-                              .length
-                          }{' '}
-                          of{' '}
-                          {
-                            participants.length
-                          }{' '}
-                          marked
-                        </p>
+                          <p
+                            className="mt-2"
+                            style={{
+                              fontSize: 13,
+                              color: '#6B8DD6',
+                              lineHeight: 1,
+                            }}
+                          >
+                            {session.records.length}{' '}
+                            of{' '}
+                            {participants.length}{' '}
+                            marked
+                          </p>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Button
-                          variant="outline"
-                          className="!py-2 text-xs"
+                      <div className="flex items-center gap-2 flex-wrap justify-end">
+                        <SessionActionButton
+                          tone="blue"
                           icon={
-                            <Pencil className="w-3.5 h-3.5" />
+                            <Link2
+                              style={{
+                                width: 15,
+                                height: 15,
+                                strokeWidth: 2.2,
+                              }}
+                            />
                           }
                           onClick={() =>
                             openEditSession(
                               session
                             )
                           }
+                          title={
+                            session.meetLink
+                              ? 'Edit meeting details'
+                              : 'Add meeting link'
+                          }
                         >
                           {session.meetLink
-                            ? 'Edit Meeting'
-                            : 'Add Meeting Link'}
-                        </Button>
+                            ? 'Edit Link'
+                            : 'Add Link'}
+                        </SessionActionButton>
 
-                        <Button
-                          variant="outline"
-                          className="!py-2 text-xs"
+                        <SessionActionButton
+                          tone="red"
+                          icon={
+                            <Trash2
+                              style={{
+                                width: 15,
+                                height: 15,
+                                strokeWidth: 2.2,
+                              }}
+                            />
+                          }
                           onClick={() =>
-                            openMarking(
+                            handleDeleteSession(
                               session
                             )
+                          }
+                          title="Delete session"
+                        >
+                          Delete
+                        </SessionActionButton>
+
+                        <SessionActionButton
+                          tone={
+                            participants.length === 0
+                              ? 'muted'
+                              : 'blue'
                           }
                           disabled={
                             participants.length ===
                             0
                           }
+                          icon={
+                            <Users
+                              style={{
+                                width: 15,
+                                height: 15,
+                                strokeWidth: 2.2,
+                              }}
+                            />
+                          }
+                          onClick={() =>
+                            openMarking(
+                              session
+                            )
+                          }
+                          title={
+                            participants.length === 0
+                              ? 'No approved participants yet'
+                              : 'Mark attendance'
+                          }
                         >
-                          {participants.length ===
-                          0
-                            ? 'No Participants Yet'
-                            : 'Mark Attendance'}
-                        </Button>
+                          {participants.length === 0
+                            ? 'No Participants'
+                            : 'Attendance'}
+                        </SessionActionButton>
                       </div>
                     </div>
 
                     {session.meetLink && (
                       <a
-                        href={
-                          session.meetLink
-                        }
+                        href={session.meetLink}
                         target="_blank"
                         rel="noreferrer"
-                        className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-orange-600 hover:underline w-fit"
+                        className="mt-4 flex flex-wrap items-center gap-2 w-fit"
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: '#F97316',
+                          textDecoration: 'none',
+                        }}
                       >
-                        <Video className="w-3.5 h-3.5" />
+                        <Video
+                          style={{
+                            width: 16,
+                            height: 16,
+                          }}
+                        />
 
                         Join Meeting
 
                         {session.meetingId && (
-                          <span className="text-navy-400 font-normal">
+                          <span
+                            style={{
+                              color: '#8291B3',
+                              fontWeight: 400,
+                            }}
+                          >
                             · ID:{' '}
-                            {
-                              session.meetingId
-                            }
+                            {session.meetingId}
                           </span>
                         )}
                       </a>
@@ -651,10 +1023,16 @@ export default function Attendance() {
       >
         <div className="space-y-4">
           <div>
-            <label className="label">
-              Date &amp;
-              Time
-            </label>
+            <div className="flex items-center justify-between gap-3">
+              <label className="label">
+                Date &amp;
+                Time
+              </label>
+
+              <span className="text-[11px] font-medium text-navy-400">
+                IST (Asia/Kolkata)
+              </span>
+            </div>
 
             <input
               type="datetime-local"
