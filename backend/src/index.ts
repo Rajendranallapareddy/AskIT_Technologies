@@ -37,6 +37,12 @@ import notificationRoutes from './routes/notification.routes';
 
 const app = express();
 
+// Cloud Run runs Express behind Google's reverse proxy.
+//
+// Trust the immediate proxy so req.ip and rate limiting use the
+// real client IP instead of treating every visitor as the same proxy.
+app.set('trust proxy', 1);
+
 const PORT =
   Number(process.env.PORT) || 8080;
 

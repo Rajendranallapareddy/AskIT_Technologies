@@ -12,9 +12,11 @@ import {
 } from '../middleware/validation.middleware';
 
 import {
-  authRateLimiter,
+  loginRateLimiter,
+  registrationRateLimiter,
+  otpResendRateLimiter,
+  forgotPasswordRateLimiter,
 } from '../middleware/rateLimit.middleware';
-
 import {
   registerValidation,
   loginValidation,
@@ -41,7 +43,7 @@ const router = Router();
  */
 router.post(
   '/register',
-  authRateLimiter,
+  registrationRateLimiter,
   registerValidation,
   validate,
   authController.register
@@ -113,7 +115,7 @@ router.post(
 router.post(
   '/resend-verification-otp',
 
-  authRateLimiter,
+  otpResendRateLimiter,
 
   body('email')
     .trim()
@@ -145,12 +147,11 @@ router.post(
  */
 router.post(
   '/login',
-  authRateLimiter,
+  loginRateLimiter,
   loginValidation,
   validate,
   authController.login
 );
-
 /**
  * --------------------------------------------------------------------------
  * REFRESH ACCESS TOKEN
@@ -193,7 +194,7 @@ router.post(
 router.post(
   '/forgot-password',
 
-  authRateLimiter,
+  forgotPasswordRateLimiter,
 
   body('email')
     .trim()
